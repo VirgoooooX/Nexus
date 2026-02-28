@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── 系统配置 ─────────────────────────────────────
+model SystemConfig {
+  id        String   @id @default("singleton")
+  key       String   @unique
+  value     String
+  // 可用于通过 UI 动态配置任意第三方 OpenAI 兼容 API 及其模型
+  updatedAt DateTime @updatedAt
+}
+
+// ─── 每日新闻快照 ─────────────────────────────────
+model DailyDigest {
+  id               String   @id @default(uuid())
+  date             String   @unique // "2026-02-23" 格式，便于查询
+  content          String   // AI 生成的当日新闻综述 (Markdown)
+  recommendedEvents String? // AI推荐追踪的新事件 (JSON Array)
+  rawJson          String?  // 原始 AI 返回的 JSON，用于调试
+  createdAt        DateTime @default(now())
+}
+
+// ─── 追踪事件 ─────────────────────────────────────
+model TrackedEvent {
+  id            String      @id @default(uuid())
+  name          String      @unique  // 事件标题，如 "OpenAI 董事会风波"
+  searchQuery   String      // 给 AI 的搜索指令
+  status        String      @default("ACTIVE") // ACTIVE | PAUSED | CONCLUDED
+  globalSummary String?     // 截至目前的事件全局脉络综述
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  lastCheckedAt DateTime    @default(now())
+  nodes         EventNode[]
+}
+
+// ─── 事件时间线节点 ─────────────────────────────────
+model EventNode {
+  id        String       @id @default(uuid())
+  eventId   String
+  event     TrackedEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  date      String       // "2026-02-23" 方便时间线排序
+  headline  String       // 该节点的标题
+  content   String       // 详细描述
+  sources   String       // JSON string array，来源链接
+  createdAt DateTime     @default(now())
+
+  @@index([eventId, date])
+}
+
+// ─── 推送日志 ──────────────────────────────────────
+model PushLog {
+  id        String   @id @default(uuid())
+  channel   String   // "wechat" | "email"
+  status    String   // "success" | "failed"
+  title     String
+  error     String?
+  createdAt DateTime @default(now())
+}
