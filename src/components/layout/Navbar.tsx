@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { GenerateDigestButton } from '@/components/dashboard/GenerateDigestButton';
 import { LayoutTemplate, Check } from "lucide-react";
 import { updateSettings, getSettings } from '@/app/actions/settingsActions';
 
@@ -131,10 +130,6 @@ export function Navbar() {
                                 </div>
                             </div>
                         )}
-                    </div>
-
-                    <div className="pl-2">
-                        <GenerateDigestButton />
                     </div>
                 </div>
             </div>

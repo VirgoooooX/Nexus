@@ -3,78 +3,19 @@
 import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
 import { DAILY_NEWS_PROMPT } from '@/services/ai/prompts'; // We will use this as default
-import { updateConfigSync, ReadflowConfigSync } from '@/lib/readflowClient';
 
 // Default category order
 const DEFAULT_CATEGORIES = ['时政要闻', '前沿科技', '人工智能', '智能硬件', '商业财经', '社会民生', '娱乐文化', '电子游戏', '体育赛事'];
 
-type ReadflowSourceConfig = { url: string; groupName: string; enabled: boolean };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
-}
-
-function parseReadflowSources(raw: string | null | undefined): ReadflowSourceConfig[] {
-    if (!raw) return [];
-    try {
-        const v = JSON.parse(raw);
-        if (!Array.isArray(v)) return [];
-        return v
-            .map((x) => ({
-                url: typeof x?.url === 'string' ? x.url : '',
-                groupName: typeof x?.groupName === 'string' ? x.groupName : '',
-                enabled: Boolean(x?.enabled)
-            }))
-            .filter((x) => x.url && x.groupName);
-    } catch {
-        return [];
-    }
-}
-
-function normalizeUrl(raw: string): string {
-    try {
-        const u = new URL(raw.trim());
-        u.hash = '';
-        return u.toString().replace(/\/$/, '');
-    } catch {
-        return raw.trim();
-    }
-}
-
-async function syncReadflowConfig(sources: ReadflowSourceConfig[]) {
-    const managed = sources.map((s) => ({ ...s, url: normalizeUrl(s.url), groupName: s.groupName.trim() }));
-    const managedUrlSet = new Set(managed.map((s) => s.url).filter(Boolean));
-    const enabledSources = managed.filter((s) => s.enabled && s.url && s.groupName);
-    const enabledGroupNames = Array.from(new Set(enabledSources.map((s) => s.groupName)));
-
-    await updateConfigSync((config: ReadflowConfigSync) => {
-        const next: ReadflowConfigSync = { ...config };
-        const existingSources = Array.isArray(next.sources) ? next.sources : [];
-        next.sources = existingSources.filter((s) => !managedUrlSet.has(normalizeUrl(s.url)));
-        next.sources.push(...enabledSources.map((s) => ({ url: s.url, groupName: s.groupName })));
-
-        const settings = next.settings && typeof next.settings === 'object' ? next.settings : {};
-        const dailyRaw = isRecord(settings) ? (settings['dailyReportSettings'] as unknown) : undefined;
-        const daily = isRecord(dailyRaw) ? dailyRaw : {};
-        const existingNames = Array.isArray(daily['groupNames'])
-            ? (daily['groupNames'] as unknown[]).filter((n) => typeof n === 'string')
-            : [];
-        const mergedNames = Array.from(new Set([...existingNames, ...enabledGroupNames]));
-        (settings as Record<string, unknown>)['dailyReportSettings'] = { ...daily, enabled: true, groupNames: mergedNames };
-        next.settings = settings;
-
-        return next;
-    });
-}
-
 export async function getSettings() {
     // Fetch settings from DB
-    const [categoriesConfig, promptConfig, layoutConfig, readflowUrlConfig, readflowSourcesConfig] = await Promise.all([
+    const [categoriesConfig, promptConfig, layoutConfig, readflowUrlConfig, scheduleEnabledConfig, scheduleTimeConfig] = await Promise.all([
         prisma.systemConfig.findUnique({ where: { key: 'CATEGORIES_ORDER' } }),
         prisma.systemConfig.findUnique({ where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' } }),
         prisma.systemConfig.findUnique({ where: { key: 'DEFAULT_LAYOUT' } }),
         prisma.systemConfig.findUnique({ where: { key: 'READFLOW_SERVER_URL' } }),
-        prisma.systemConfig.findUnique({ where: { key: 'READFLOW_SOURCES' } })
+        prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_ENABLED' } }),
+        prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_TIME' } })
     ]);
 
     let categoriesOrder = [...DEFAULT_CATEGORIES];
@@ -98,14 +39,16 @@ export async function getSettings() {
 
     const defaultLayout = layoutConfig?.value || 'masonry';
     const readflowServerUrl = readflowUrlConfig?.value || process.env.READFLOW_SERVER_URL || 'https://rsscloud.198909.xyz:37891/';
-    const readflowSources = parseReadflowSources(readflowSourcesConfig?.value);
+    const digestScheduleEnabled = scheduleEnabledConfig?.value === 'true';
+    const digestScheduleTime = scheduleTimeConfig?.value || '08:30';
 
     return {
         categoriesOrder,
         promptTemplate,
         defaultLayout,
         readflowServerUrl,
-        readflowSources
+        digestScheduleEnabled,
+        digestScheduleTime
     };
 }
 
@@ -114,9 +57,19 @@ export async function saveSettings(
     promptTemplate: string,
     defaultLayout: string,
     readflowServerUrl: string,
-    readflowSources: ReadflowSourceConfig[]
+    digestScheduleEnabled: boolean,
+    digestScheduleTime: string
 ) {
     try {
+        const time = typeof digestScheduleTime === 'string' ? digestScheduleTime.trim() : '';
+        const m = /^(\d{2}):(\d{2})$/.exec(time);
+        if (!m) throw new Error('定时生成时间格式必须为 HH:mm');
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+            throw new Error('定时生成时间不合法');
+        }
+
         await prisma.systemConfig.upsert({
             where: { key: 'CATEGORIES_ORDER' },
             create: { id: 'CATEGORIES_ORDER', key: 'CATEGORIES_ORDER', value: JSON.stringify(categoriesOrder) },
@@ -142,12 +95,16 @@ export async function saveSettings(
         });
 
         await prisma.systemConfig.upsert({
-            where: { key: 'READFLOW_SOURCES' },
-            create: { id: 'READFLOW_SOURCES', key: 'READFLOW_SOURCES', value: JSON.stringify(readflowSources) },
-            update: { value: JSON.stringify(readflowSources) }
+            where: { key: 'DAILY_DIGEST_SCHEDULE_ENABLED' },
+            create: { id: 'DAILY_DIGEST_SCHEDULE_ENABLED', key: 'DAILY_DIGEST_SCHEDULE_ENABLED', value: digestScheduleEnabled ? 'true' : 'false' },
+            update: { value: digestScheduleEnabled ? 'true' : 'false' }
         });
 
-        await syncReadflowConfig(readflowSources);
+        await prisma.systemConfig.upsert({
+            where: { key: 'DAILY_DIGEST_SCHEDULE_TIME' },
+            create: { id: 'DAILY_DIGEST_SCHEDULE_TIME', key: 'DAILY_DIGEST_SCHEDULE_TIME', value: time },
+            update: { value: time }
+        });
 
         revalidatePath('/');
         return { success: true };

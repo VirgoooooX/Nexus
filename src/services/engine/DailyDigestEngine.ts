@@ -17,11 +17,32 @@ export class DailyDigestEngine {
         }
 
         const articles = await getCleanedArticles(dateStr, dateStr);
-        const result = await aiSearchService.summarizeDailyNewsFromArticles(dateStr, articles);
+        const activeTrackers = await prisma.trackedEvent.findMany({
+            where: { status: 'ACTIVE' },
+            select: { id: true, name: true, searchQuery: true }
+        });
+        const trackerInput = activeTrackers.map((t) => ({ eventId: t.id, eventName: t.name, query: t.searchQuery }));
+        const result = await aiSearchService.summarizeDailyNewsFromArticles(dateStr, articles, trackerInput);
 
         // 3. Format into Markdown (handling the new theme-based categorization)
         let markdown = `# ${dateStr} 全球新闻日报\n\n`;
         markdown += `> ${result.overallSummary}\n\n`;
+
+        if (Array.isArray(result.trackedUpdates) && result.trackedUpdates.length > 0) {
+            markdown += `## 今日追踪更新\n\n`;
+            for (const u of result.trackedUpdates) {
+                markdown += `### ${u.eventName}\n\n`;
+                for (const h of u.highlights || []) {
+                    const citations = Array.isArray(h.citations) ? h.citations : [];
+                    const refs =
+                        citations.length > 0
+                            ? `（${citations.map((c: any) => `[${c.source || '来源'}](${c.url})`).join(', ')}）`
+                            : '';
+                    markdown += `- ${h.headline}${h.summary ? `：${h.summary}` : ''}${refs}\n`;
+                }
+                markdown += `\n`;
+            }
+        }
 
         if (result.categories && result.categories.length > 0) {
             result.categories.forEach(cat => {
@@ -32,8 +53,14 @@ export class DailyDigestEngine {
                     cat.themes.forEach(theme => {
                         markdown += `### ${theme.themeName}\n`;
                         theme.items.forEach(item => {
-                            const link = item.url ? `*[${item.source}](${item.url})*` : `*[${item.source}]*`;
-                            markdown += `- **${item.headline}**\n  ${item.summary ? item.summary + ' ' : ''}${link}\n`;
+                            const citations = Array.isArray((item as any).citations) ? (item as any).citations : [];
+                            const refs =
+                                citations.length > 0
+                                    ? `（${citations.map((c: any) => `[${c.source || '来源'}](${c.url})`).join(', ')}）`
+                                    : item.url
+                                        ? `（[${item.source || '来源'}](${item.url})）`
+                                        : '';
+                            markdown += `- ${item.headline}${item.summary ? `：${item.summary}` : ''}${refs}\n`;
                         });
                         markdown += `\n`; // spacing between themes
                     });
@@ -41,8 +68,14 @@ export class DailyDigestEngine {
                 // Handle fallback if AI returns flat items under category
                 else if (cat.items && cat.items.length > 0) {
                     cat.items.forEach(item => {
-                        const link = item.url ? `*[${item.source}](${item.url})*` : `*[${item.source}]*`;
-                        markdown += `- **${item.headline}**\n  ${item.summary ? item.summary + ' ' : ''}${link}\n`;
+                        const citations = Array.isArray((item as any).citations) ? (item as any).citations : [];
+                        const refs =
+                            citations.length > 0
+                                ? `（${citations.map((c: any) => `[${c.source || '来源'}](${c.url})`).join(', ')}）`
+                                : item.url
+                                    ? `（[${item.source || '来源'}](${item.url})）`
+                                    : '';
+                        markdown += `- ${item.headline}${item.summary ? `：${item.summary}` : ''}${refs}\n`;
                     });
                     markdown += `\n`;
                 }
@@ -51,9 +84,15 @@ export class DailyDigestEngine {
         // Backward compatibility with oldest flat format
         else if (result.items && result.items.length > 0) {
             result.items.forEach((item, index) => {
-                const link = item.url ? `*[${item.source}](${item.url})*` : `*[${item.source}]*`;
+                const citations = Array.isArray((item as any).citations) ? (item as any).citations : [];
+                const refs =
+                    citations.length > 0
+                        ? `（${citations.map((c: any) => `[${c.source || '来源'}](${c.url})`).join(', ')}）`
+                        : item.url
+                            ? `（[${item.source || '来源'}](${item.url})）`
+                            : '';
                 markdown += `### ${index + 1}. ${item.headline}\n`;
-                markdown += `${item.summary ? item.summary + '\n' : ''}${link}\n\n`;
+                markdown += `${item.summary ? item.summary + '\n' : ''}${refs}\n\n`;
             });
         }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Link from 'next/link';
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { getIconComponent } from "./IconHelper";
 
@@ -328,36 +327,90 @@ export default function MasonryView({ data }: { data: any }) {
                                                     <div className={`flex-1 h-px ${accent.rule}`}></div>
                                                 </div>
                                                 <div className="space-y-6">
-                                                    {theme.items?.map((item: any, iIdx: number) => (
-                                                        <Link href={`/events/${item.eventId || "#"}`} key={iIdx} className="block group/item">
-                                                            <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
-                                                                {item.headline}
-                                                            </h5>
-                                                            <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
-                                                                {item.summary}
-                                                            </p>
-                                                            <div className={`flex items-center gap-1 mt-2 text-[11px] font-black uppercase tracking-wider text-stone-400 transition-colors ${accent.microLink}`}>
-                                                                <span>阅读详情</span>
-                                                                <ArrowUpRight className="w-3 h-3" />
-                                                            </div>
-                                                        </Link>
-                                                    ))}
+                                                    {theme.items?.map((item: any, iIdx: number) => {
+                                                        const citations = Array.isArray(item?.citations)
+                                                            ? item.citations
+                                                            : item?.url
+                                                                ? [{ source: item?.source || '来源', url: item.url }]
+                                                                : [];
+                                                        return (
+                                                            <a
+                                                                href={item?.url || citations[0]?.url || '#'}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                key={iIdx}
+                                                                className="block group/item"
+                                                            >
+                                                                <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
+                                                                    {item.headline}
+                                                                </h5>
+                                                                {item.summary && (
+                                                                    <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
+                                                                        {item.summary}
+                                                                    </p>
+                                                                )}
+                                                                {citations.length > 0 && (
+                                                                    <div className="mt-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                                                                        （
+                                                                        {citations.slice(0, 3).map((c: any, cIdx: number) => (
+                                                                            <React.Fragment key={`${c?.url || cIdx}`}>
+                                                                                <span className="underline underline-offset-2">{c?.source || '来源'}</span>
+                                                                                {cIdx < Math.min(2, citations.length - 1) ? '，' : ''}
+                                                                            </React.Fragment>
+                                                                        ))}
+                                                                        ）
+                                                                    </div>
+                                                                )}
+                                                                <div className={`flex items-center gap-1 mt-2 text-[11px] font-black uppercase tracking-wider text-stone-400 transition-colors ${accent.microLink}`}>
+                                                                    <span>打开引用</span>
+                                                                    <ArrowUpRight className="w-3 h-3" />
+                                                                </div>
+                                                            </a>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         ))}
 
                                         {!cat.themes && cat.items && (
                                             <div className="space-y-5">
-                                                {cat.items?.map((item: any, iIdx: number) => (
-                                                    <Link href={`/events/${item.eventId || "#"}`} key={iIdx} className="block group/item">
-                                                        <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
-                                                            {item.headline}
-                                                        </h5>
-                                                        <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
-                                                            {item.summary}
-                                                        </p>
-                                                    </Link>
-                                                ))}
+                                                {cat.items?.map((item: any, iIdx: number) => {
+                                                    const citations = Array.isArray(item?.citations)
+                                                        ? item.citations
+                                                        : item?.url
+                                                            ? [{ source: item?.source || '来源', url: item.url }]
+                                                            : [];
+                                                    return (
+                                                        <a
+                                                            href={item?.url || citations[0]?.url || '#'}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            key={iIdx}
+                                                            className="block group/item"
+                                                        >
+                                                            <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
+                                                                {item.headline}
+                                                            </h5>
+                                                            {item.summary && (
+                                                                <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
+                                                                    {item.summary}
+                                                                </p>
+                                                            )}
+                                                            {citations.length > 0 && (
+                                                                <div className="mt-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
+                                                                    （
+                                                                    {citations.slice(0, 3).map((c: any, cIdx: number) => (
+                                                                        <React.Fragment key={`${c?.url || cIdx}`}>
+                                                                            <span className="underline underline-offset-2">{c?.source || '来源'}</span>
+                                                                            {cIdx < Math.min(2, citations.length - 1) ? '，' : ''}
+                                                                        </React.Fragment>
+                                                                    ))}
+                                                                    ）
+                                                                </div>
+                                                            )}
+                                                        </a>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>

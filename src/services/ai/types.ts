@@ -1,9 +1,16 @@
-// 单条精炼新闻
+export interface Citation {
+    source: string;
+    url: string;
+}
+
+// 单条归纳结论
 export interface NewsItem {
     headline: string;
-    source: string;
-    url?: string;
-    summary?: string; // 保留以兼容旧数据
+    summary?: string;
+    url: string;
+    citations?: Citation[];
+    source?: string;
+    evidenceUrls?: string[];
 }
 
 // 核心主题 (包含多条相关新闻)
@@ -27,6 +34,20 @@ export interface DailyNewsResult {
     overallSummary: string;
     items?: NewsItem[]; // 保留以兼容最早期的数据结构
     recommendedEvents: { name: string; query: string; reason: string }[];
+    trackedUpdates?: TrackedUpdate[];
+}
+
+export interface TrackedUpdateHighlight {
+    headline: string;
+    summary?: string;
+    citations: Citation[];
+}
+
+export interface TrackedUpdate {
+    eventId: string;
+    eventName: string;
+    reason?: string;
+    highlights: TrackedUpdateHighlight[];
 }
 
 // 事件追踪搜索结果

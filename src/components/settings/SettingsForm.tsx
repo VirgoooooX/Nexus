@@ -2,14 +2,17 @@
 
 import { useState } from 'react';
 import { saveSettings } from '@/app/actions/settingsActions';
-import { GripVertical, AlertCircle, Save, CheckCircle2, LayoutTemplate, Rss, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, AlertCircle, Save, CheckCircle2, LayoutTemplate, Rss, ExternalLink, Clock, Play } from 'lucide-react';
+import Link from 'next/link';
+import { GenerateDigestButton } from '@/components/dashboard/GenerateDigestButton';
 
 interface SettingsFormProps {
     initialCategories: string[];
     initialPrompt: string;
     initialLayout: string;
     initialReadflowServerUrl: string;
-    initialReadflowSources: Array<{ url: string; groupName: string; enabled: boolean }>;
+    initialDigestScheduleEnabled: boolean;
+    initialDigestScheduleTime: string;
 }
 
 const VIEW_OPTIONS = [
@@ -22,13 +25,15 @@ export function SettingsForm({
     initialPrompt,
     initialLayout,
     initialReadflowServerUrl,
-    initialReadflowSources
+    initialDigestScheduleEnabled,
+    initialDigestScheduleTime,
 }: SettingsFormProps) {
     const [categories, setCategories] = useState(initialCategories);
     const [prompt, setPrompt] = useState(initialPrompt);
     const [layout, setLayout] = useState(initialLayout);
     const [readflowServerUrl, setReadflowServerUrl] = useState(initialReadflowServerUrl);
-    const [readflowSources, setReadflowSources] = useState(initialReadflowSources);
+    const [digestScheduleEnabled, setDigestScheduleEnabled] = useState(initialDigestScheduleEnabled);
+    const [digestScheduleTime, setDigestScheduleTime] = useState(initialDigestScheduleTime);
     const [status, setStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
     const [errorMsg, setErrorMsg] = useState('');
 
@@ -50,7 +55,7 @@ export function SettingsForm({
         setErrorMsg('');
 
         try {
-            const result = await saveSettings(categories, prompt, layout, readflowServerUrl, readflowSources);
+            const result = await saveSettings(categories, prompt, layout, readflowServerUrl, digestScheduleEnabled, digestScheduleTime);
             if (result.success) {
                 setStatus('success');
                 setTimeout(() => setStatus('idle'), 2000);
@@ -58,7 +63,7 @@ export function SettingsForm({
                 setStatus('error');
                 setErrorMsg(result.error || '保存失败');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             setStatus('error');
             setErrorMsg(String(err));
         }
@@ -169,7 +174,7 @@ export function SettingsForm({
                     <h2 className="font-serif text-xl font-bold text-stone-900 mb-1 flex items-center gap-2">
                         <Rss className="w-5 h-5" /> Readflow RSS 数据源
                     </h2>
-                    <p className="text-sm text-stone-500">配置 Readflow 服务地址，并管理要抓取的 RSS 源与分组（保存即同步）。</p>
+                    <p className="text-sm text-stone-500">配置 Readflow 服务地址；源订阅、分组与日报选组在 Readflow 管理页完成。</p>
                 </div>
                 <div className="p-6 space-y-6">
                     <div className="space-y-2">
@@ -181,86 +186,61 @@ export function SettingsForm({
                             placeholder="https://rsscloud.198909.xyz:37891/"
                         />
                     </div>
-
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <div className="text-sm font-bold text-stone-800">订阅源列表</div>
-                            <button
-                                type="button"
-                                onClick={() => setReadflowSources((prev) => [...prev, { url: '', groupName: 'Nexus日报组', enabled: true }])}
-                                className="inline-flex items-center gap-2 text-xs font-bold text-stone-900 bg-stone-100 hover:bg-stone-200 px-3 py-2 rounded-lg transition-colors"
-                            >
-                                <Plus className="w-4 h-4" /> 新增源
-                            </button>
+                    <div className="flex items-center justify-between gap-4 p-4 bg-stone-50 border border-stone-200 rounded-lg">
+                        <div className="text-sm text-stone-700">
+                            <div className="font-bold text-stone-900">在管理页维护订阅与分组</div>
+                            <div className="text-xs text-stone-500 mt-1">包括公共池订阅/取消订阅、分组管理、日报选组。</div>
                         </div>
+                        <Link
+                            href="/admin/readflow"
+                            className="inline-flex items-center gap-2 text-xs font-bold text-white bg-stone-900 hover:bg-stone-700 px-4 py-3 rounded-lg transition-colors"
+                        >
+                            打开 Readflow 管理 <ExternalLink className="w-4 h-4" />
+                        </Link>
+                    </div>
+                </div>
+            </section>
 
-                        <div className="overflow-hidden border border-stone-200 rounded-lg">
-                            <div className="grid grid-cols-12 bg-stone-50 text-[11px] font-bold tracking-widest uppercase text-stone-500 px-4 py-3">
-                                <div className="col-span-2">启用</div>
-                                <div className="col-span-6">URL</div>
-                                <div className="col-span-3">分组</div>
-                                <div className="col-span-1 text-right">操作</div>
-                            </div>
-                            <div className="divide-y divide-stone-100">
-                                {readflowSources.map((row, idx) => (
-                                    <div key={idx} className="grid grid-cols-12 items-center gap-2 px-4 py-3">
-                                        <div className="col-span-2">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setReadflowSources((prev) =>
-                                                        prev.map((r, i) => (i === idx ? { ...r, enabled: !r.enabled } : r))
-                                                    )
-                                                }
-                                                className={`w-12 h-7 rounded-full border transition-colors relative ${row.enabled ? 'bg-stone-900 border-stone-900' : 'bg-white border-stone-200'}`}
-                                                aria-label="toggle"
-                                            >
-                                                <span
-                                                    className={`absolute top-0.5 transition-all w-6 h-6 rounded-full bg-white ${row.enabled ? 'left-[22px]' : 'left-0.5'} shadow`}
-                                                />
-                                            </button>
-                                        </div>
-                                        <div className="col-span-6">
-                                            <input
-                                                value={row.url}
-                                                onChange={(e) =>
-                                                    setReadflowSources((prev) =>
-                                                        prev.map((r, i) => (i === idx ? { ...r, url: e.target.value } : r))
-                                                    )
-                                                }
-                                                className="w-full px-3 py-2 border border-stone-200 rounded-md bg-white text-stone-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-stone-400"
-                                                placeholder="https://example.com/rss"
-                                            />
-                                        </div>
-                                        <div className="col-span-3">
-                                            <input
-                                                value={row.groupName}
-                                                onChange={(e) =>
-                                                    setReadflowSources((prev) =>
-                                                        prev.map((r, i) => (i === idx ? { ...r, groupName: e.target.value } : r))
-                                                    )
-                                                }
-                                                className="w-full px-3 py-2 border border-stone-200 rounded-md bg-white text-stone-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-stone-400"
-                                                placeholder="Nexus日报组"
-                                            />
-                                        </div>
-                                        <div className="col-span-1 flex justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={() => setReadflowSources((prev) => prev.filter((_, i) => i !== idx))}
-                                                className="p-2 rounded-md hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors"
-                                                aria-label="remove"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {readflowSources.length === 0 && (
-                                    <div className="px-4 py-10 text-center text-sm text-stone-500">
-                                        暂无订阅源。新增源后保存，即会同步到 Readflow。
-                                    </div>
-                                )}
+            <section className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-stone-100 bg-stone-50/50">
+                    <h2 className="font-serif text-xl font-bold text-stone-900 mb-1 flex items-center gap-2">
+                        <Clock className="w-5 h-5" /> 定时生成日报
+                    </h2>
+                    <p className="text-sm text-stone-500">按北京时间（Asia/Shanghai）到点生成今日日报；需要外部定时任务周期性调用 /api/cron。</p>
+                </div>
+                <div className="p-6 space-y-6">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <div className="text-sm font-bold text-stone-900">启用定时生成</div>
+                            <div className="text-xs text-stone-500 mt-1">启用后，/api/cron 到点且当日未生成时才会执行。</div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setDigestScheduleEnabled((v) => !v)}
+                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${digestScheduleEnabled ? 'bg-stone-900' : 'bg-stone-200'}`}
+                            aria-pressed={digestScheduleEnabled}
+                        >
+                            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${digestScheduleEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold tracking-widest uppercase text-stone-500">生成时间（北京时间）</label>
+                            <input
+                                type="time"
+                                value={digestScheduleTime}
+                                onChange={(e) => setDigestScheduleTime(e.target.value)}
+                                className="w-full px-4 py-3 border border-stone-200 rounded-lg bg-white text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-stone-400"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold tracking-widest uppercase text-stone-500">手动生成</label>
+                            <div className="flex items-center gap-3">
+                                <div className="inline-flex items-center gap-2 text-xs font-bold text-stone-700 bg-stone-100 px-3 py-2 rounded-lg">
+                                    <Play className="w-4 h-4" /> 立即生成
+                                </div>
+                                <GenerateDigestButton />
                             </div>
                         </div>
                     </div>

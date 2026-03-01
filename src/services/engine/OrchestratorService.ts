@@ -1,6 +1,6 @@
 import { dailyDigestEngine } from './DailyDigestEngine';
-import { eventTrackingEngine } from './EventTrackingEngine';
 import { prisma } from '@/lib/db';
+import { formatDateInTimeZone } from '@/lib/utils';
 
 function normalizeUrl(raw: string): string {
     try {
@@ -24,6 +24,71 @@ type RelatedTracker = {
     reason: 'source_url_match';
 };
 
+function buildDigestTrackedUpdateNodeText(update: any) {
+    const highlights = Array.isArray(update?.highlights) ? update.highlights : [];
+    const lines: string[] = [];
+    const sources: string[] = [];
+    for (const h of highlights) {
+        if (typeof h !== 'object' || h === null) continue;
+        const headline = typeof h.headline === 'string' ? h.headline : '';
+        if (!headline) continue;
+        const summary = typeof h.summary === 'string' ? h.summary : '';
+        const citations = Array.isArray(h.citations) ? h.citations : [];
+        const refs: string[] = [];
+        for (const c of citations) {
+            if (typeof c !== 'object' || c === null) continue;
+            const url = typeof (c as any).url === 'string' ? (c as any).url : '';
+            const source = typeof (c as any).source === 'string' ? (c as any).source : '';
+            if (!url) continue;
+            sources.push(url);
+            refs.push(source || '来源');
+        }
+        const refText = refs.length > 0 ? `（${Array.from(new Set(refs)).join(', ')}）` : '';
+        lines.push(`- ${headline}${summary ? `：${summary}` : ''}${refText}`);
+    }
+    const headline = lines.length > 0 ? String(lines[0]).replace(/^- /, '').split('：')[0].trim() : '';
+    return { headline: headline || (typeof update?.eventName === 'string' ? update.eventName : ''), content: lines.join('\n'), sources: Array.from(new Set(sources.map(normalizeUrl).filter(Boolean))) };
+}
+
+async function writeTrackedUpdatesAsEventNodes(dateStr: string, digestRawJson: string | null | undefined) {
+    if (!digestRawJson) return { created: 0, skipped: 0 };
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(digestRawJson);
+    } catch {
+        return { created: 0, skipped: 0 };
+    }
+    if (!isRecord(parsed)) return { created: 0, skipped: 0 };
+    const trackedUpdates = Array.isArray((parsed as any).trackedUpdates) ? (parsed as any).trackedUpdates : [];
+    if (trackedUpdates.length === 0) return { created: 0, skipped: 0 };
+
+    let created = 0;
+    let skipped = 0;
+    for (const u of trackedUpdates) {
+        if (typeof u !== 'object' || u === null) continue;
+        const eventId = typeof (u as any).eventId === 'string' ? (u as any).eventId : '';
+        if (!eventId) continue;
+        const node = buildDigestTrackedUpdateNodeText(u);
+        if (!node.headline || node.sources.length === 0) continue;
+        const exists = await prisma.eventNode.findFirst({ where: { eventId, date: dateStr, headline: node.headline }, select: { id: true } });
+        if (exists) {
+            skipped += 1;
+            continue;
+        }
+        await prisma.eventNode.create({
+            data: {
+                eventId,
+                date: dateStr,
+                headline: node.headline,
+                content: node.content,
+                sources: JSON.stringify(node.sources)
+            }
+        });
+        created += 1;
+    }
+    return { created, skipped };
+}
+
 async function attachRelatedTrackersToDigest(dateStr: string) {
     const digest = await prisma.dailyDigest.findUnique({ where: { date: dateStr } });
     if (!digest?.rawJson) return;
@@ -37,18 +102,51 @@ async function attachRelatedTrackersToDigest(dateStr: string) {
 
     const categories =
         isRecord(parsed) && Array.isArray(parsed.categories) ? (parsed.categories as unknown[]) : [];
-    const itemRefs: Array<{ item: Record<string, unknown>; url: string }> = [];
+    const itemRefs: Array<{ item: Record<string, unknown>; urls: string[] }> = [];
+
+    const pushItemRef = (item: Record<string, unknown>) => {
+        const rawUrls: string[] = [];
+        const url = typeof item.url === 'string' ? item.url : '';
+        if (url) rawUrls.push(url);
+        const citations = Array.isArray(item.citations) ? item.citations : [];
+        for (const c of citations) {
+            if (typeof c !== 'object' || c === null) continue;
+            const u = typeof (c as any).url === 'string' ? (c as any).url : '';
+            if (!u.trim()) continue;
+            rawUrls.push(u);
+        }
+        const evidenceUrls = Array.isArray(item.evidenceUrls) ? item.evidenceUrls : [];
+        for (const u of evidenceUrls) {
+            if (typeof u !== 'string') continue;
+            if (!u.trim()) continue;
+            rawUrls.push(u);
+        }
+        const urls = Array.from(new Set(rawUrls.map(normalizeUrl).filter((x) => x)));
+        if (urls.length === 0) return;
+        itemRefs.push({ item, urls });
+    };
+
     for (const cat of categories) {
         const themes = isRecord(cat) && Array.isArray(cat.themes) ? (cat.themes as unknown[]) : [];
         for (const theme of themes) {
             const items = isRecord(theme) && Array.isArray(theme.items) ? (theme.items as unknown[]) : [];
             for (const item of items) {
                 if (!isRecord(item)) continue;
-                const url = typeof item.url === 'string' ? item.url : '';
-                if (!url) continue;
-                itemRefs.push({ item, url: normalizeUrl(url) });
+                pushItemRef(item);
             }
         }
+
+        const fallbackItems = isRecord(cat) && Array.isArray(cat.items) ? (cat.items as unknown[]) : [];
+        for (const item of fallbackItems) {
+            if (!isRecord(item)) continue;
+            pushItemRef(item);
+        }
+    }
+
+    const legacyTopItems = isRecord(parsed) && Array.isArray(parsed.items) ? (parsed.items as unknown[]) : [];
+    for (const item of legacyTopItems) {
+        if (!isRecord(item)) continue;
+        pushItemRef(item);
     }
 
     if (itemRefs.length === 0) return;
@@ -92,22 +190,25 @@ async function attachRelatedTrackersToDigest(dateStr: string) {
         }
     }
 
-    for (const { item, url } of itemRefs) {
-        const matched = urlToEventIds.get(url);
+    for (const { item, urls } of itemRefs) {
+        const matchedEventIds = new Set<string>();
+        for (const url of urls) {
+            const matched = urlToEventIds.get(url);
+            if (!matched) continue;
+            for (const id of matched) matchedEventIds.add(id);
+        }
         const trackers: RelatedTracker[] = [];
-        if (matched) {
-            for (const eventId of matched) {
-                const name = eventNameById.get(eventId);
-                if (!name) continue;
-                const latest = latestNodeByEvent.get(eventId);
-                trackers.push({
-                    id: eventId,
-                    name,
-                    lastNodeDate: latest?.date,
-                    lastNodeHeadline: latest?.headline,
-                    reason: 'source_url_match'
-                });
-            }
+        for (const eventId of matchedEventIds) {
+            const name = eventNameById.get(eventId);
+            if (!name) continue;
+            const latest = latestNodeByEvent.get(eventId);
+            trackers.push({
+                id: eventId,
+                name,
+                lastNodeDate: latest?.date,
+                lastNodeHeadline: latest?.headline,
+                reason: 'source_url_match'
+            });
         }
         item['relatedTrackers'] = trackers;
     }
@@ -118,7 +219,7 @@ async function attachRelatedTrackersToDigest(dateStr: string) {
 export class OrchestratorService {
     async runDaily() {
         console.log(`[Orchestrator] Starting daily run...`);
-        const dateStr = new Date().toISOString().split('T')[0];
+        const dateStr = formatDateInTimeZone('Asia/Shanghai');
 
         // 1. Daily Digest
         let digestResult = null;
@@ -128,12 +229,11 @@ export class OrchestratorService {
             console.error(`[Orchestrator] Failed to run daily digest:`, err);
         }
 
-        // 2. Track Events
         let trackingResults = null;
         try {
-            trackingResults = await eventTrackingEngine.evaluateAllTrackers();
+            trackingResults = digestResult ? await writeTrackedUpdatesAsEventNodes(dateStr, (digestResult as any).rawJson) : null;
         } catch (err) {
-            console.error(`[Orchestrator] Failed to evaluate trackers:`, err);
+            console.error(`[Orchestrator] Failed to write tracked updates as nodes:`, err);
         }
 
         try {

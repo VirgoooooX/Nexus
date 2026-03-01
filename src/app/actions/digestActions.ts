@@ -3,9 +3,10 @@
 import { prisma } from '@/lib/db';
 import { orchestrator } from '@/services/engine/OrchestratorService';
 import { revalidatePath } from 'next/cache';
+import { formatDateInTimeZone } from '@/lib/utils';
 
 export async function generateTodayDigest() {
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = formatDateInTimeZone('Asia/Shanghai');
 
     try {
         // Delete existing digest for today so we can regenerate with new format

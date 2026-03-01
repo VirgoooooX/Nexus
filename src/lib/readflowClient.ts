@@ -8,6 +8,49 @@ export type ReadflowCleanedArticle = {
     publishedAt: string;
 };
 
+export type ReadflowPublicFeed = {
+    id: string;
+    url: string;
+    name: string;
+    category: string;
+    description?: string;
+    subscriberCount?: number;
+    articleCount?: number;
+    refreshCron?: string;
+    refreshIntervalSeconds?: number;
+};
+
+export type ReadflowUserGroup = {
+    id: number;
+    name: string;
+    sortOrder?: number;
+    icon?: string | null;
+    color?: string | null;
+    [k: string]: unknown;
+};
+
+export type ReadflowUserSource = {
+    url: string;
+    name?: string | null;
+    category?: string | null;
+    description?: string | null;
+    isActive?: boolean;
+    groupId?: number | null;
+    groupName?: string | null;
+    [k: string]: unknown;
+};
+
+export type ReadflowPreferences = {
+    dailyReportSettings?: {
+        enabled?: boolean;
+        scheduledTime?: string;
+        groupNames?: string[];
+        articleLimit?: number;
+        [k: string]: unknown;
+    };
+    [k: string]: unknown;
+};
+
 export type ReadflowConfigSync = {
     settings: {
         dailyReportSettings?: {
@@ -226,4 +269,98 @@ export async function clientSync(payload: unknown): Promise<unknown> {
 export async function getBotUserId(): Promise<string> {
     const { userId } = await getAuth();
     return userId;
+}
+
+export async function getPublicFeeds(): Promise<ReadflowPublicFeed[]> {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await fetch(new URL('/api/rss/public', serverUrl), { method: 'GET' });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow get public feeds failed: ${res.status} ${text}`);
+    }
+    const data: unknown = await res.json();
+    if (!isRecord(data)) return [];
+    const feeds = data.feeds;
+    return Array.isArray(feeds) ? (feeds as ReadflowPublicFeed[]) : [];
+}
+
+export async function getConfigGroups(): Promise<ReadflowUserGroup[]> {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(new URL('/api/config/groups', serverUrl), { method: 'GET' }, true);
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow get groups failed: ${res.status} ${text}`);
+    }
+    const data: unknown = await res.json();
+    if (!isRecord(data)) return [];
+    const groups = data.data;
+    return Array.isArray(groups) ? (groups as ReadflowUserGroup[]) : [];
+}
+
+export async function upsertConfigGroup(input: { name: string; sortOrder: number; icon?: string | null; color?: string | null }) {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(
+        new URL('/api/config/groups', serverUrl),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) },
+        true
+    );
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow upsert group failed: ${res.status} ${text}`);
+    }
+    return res.json();
+}
+
+export async function getConfigSources(): Promise<ReadflowUserSource[]> {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(new URL('/api/config/sources', serverUrl), { method: 'GET' }, true);
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow get sources failed: ${res.status} ${text}`);
+    }
+    const data: unknown = await res.json();
+    if (!isRecord(data)) return [];
+    const sources = data.data;
+    return Array.isArray(sources) ? (sources as ReadflowUserSource[]) : [];
+}
+
+export async function batchUpsertConfigSources(sources: ReadflowUserSource[]) {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(
+        new URL('/api/config/sources/batch', serverUrl),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sources) },
+        true
+    );
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow batch upsert sources failed: ${res.status} ${text}`);
+    }
+    return res.json();
+}
+
+export async function getPreferences(): Promise<ReadflowPreferences> {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(new URL('/api/config/preferences', serverUrl), { method: 'GET' }, true);
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow get preferences failed: ${res.status} ${text}`);
+    }
+    const data: unknown = await res.json();
+    if (!isRecord(data)) return {};
+    const prefs = data.data;
+    return isRecord(prefs) ? (prefs as ReadflowPreferences) : {};
+}
+
+export async function updatePreferences(prefs: ReadflowPreferences) {
+    const serverUrl = await getReadflowServerUrl();
+    const res = await authedFetch(
+        new URL('/api/config/preferences', serverUrl),
+        { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prefs) },
+        true
+    );
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Readflow update preferences failed: ${res.status} ${text}`);
+    }
+    return res.json();
 }

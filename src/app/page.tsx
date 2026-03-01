@@ -14,6 +14,7 @@ export default async function HomePage() {
   let categories = [];
   let overallSummary = '';
   let recommendedEvents = [];
+  let trackedUpdates = [];
 
   if (digest?.rawJson) {
     try {
@@ -21,6 +22,7 @@ export default async function HomePage() {
       categories = parsed.categories || [];
       overallSummary = parsed.overallSummary || '';
       recommendedEvents = parsed.recommendedEvents || [];
+      trackedUpdates = parsed.trackedUpdates || [];
 
       // Backward compatibility: if old flat format, wrap in single category
       if (categories.length === 0 && parsed.items?.length > 0) {
@@ -60,6 +62,7 @@ export default async function HomePage() {
         overallSummary={overallSummary}
         totalItems={totalItems}
         recommendedEvents={recommendedEvents}
+        trackedUpdates={trackedUpdates}
         hasData={hasData}
         activeView={defaultLayout}
       />
