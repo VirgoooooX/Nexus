@@ -27,7 +27,7 @@ export const DAILY_NEWS_PROMPT = (date: string) => `
               "summary": "可选：补充一句细节（不超过 80 字）",
               "url": "主引用链接（必须来自 citations[0].url；若无则用空字符串）",
               "citations": [
-                { "source": "来源媒体名", "url": "必须来自输入文章的 url" }
+                { "source": "来源媒体名", "url": "必须来自输入文章的 url", "title": "必须来自输入文章的 title，且与该 url 对应" }
               ]
             }
           ]
@@ -45,7 +45,7 @@ export const DAILY_NEWS_PROMPT = (date: string) => `
           "headline": "进展归纳结论（1 句）",
           "summary": "可选：补充一句细节（不超过 120 字）",
           "citations": [
-            { "source": "来源媒体名", "url": "必须来自输入文章的 url" }
+            { "source": "来源媒体名", "url": "必须来自输入文章的 url", "title": "必须来自输入文章的 title，且与该 url 对应" }
           ]
         }
       ]

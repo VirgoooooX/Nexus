@@ -1,6 +1,7 @@
 export interface Citation {
     source: string;
     url: string;
+    title: string;
 }
 
 // 单条归纳结论

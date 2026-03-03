@@ -13,19 +13,23 @@ export function GenerateDigestButton() {
         setErrorMsg('');
 
         try {
+            console.log('[GenerateDigestButton] generateTodayDigest start');
             const result = await generateTodayDigest();
 
             if (result.success) {
+                console.log('[GenerateDigestButton] generateTodayDigest success');
                 setStatus('success');
                 setTimeout(() => {
                     setStatus('idle');
                     window.location.reload();
                 }, 1500);
             } else {
+                console.log('[GenerateDigestButton] generateTodayDigest error', result.error || '');
                 setStatus('error');
                 setErrorMsg(result.error || '未知错误');
             }
         } catch (err: any) {
+            console.log('[GenerateDigestButton] generateTodayDigest exception', String(err));
             setStatus('error');
             setErrorMsg(String(err));
         }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
-import { Sparkles, ExternalLink, RefreshCw, LayoutTemplate, ArrowUpRight, Pin, X } from "lucide-react";
+import { Sparkles, ExternalLink, RefreshCw, LayoutTemplate, ArrowUpRight } from "lucide-react";
 import Link from 'next/link';
 
 // Import views
@@ -29,7 +29,7 @@ export default function LayoutWrapper({
     // Scroll to top visibility state
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [hoveredItem, setHoveredItem] = useState<any | null>(null);
-    const [pinnedItem, setPinnedItem] = useState<any | null>(null);
+    const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
     const rafIdRef = useRef<number | null>(null);
     const categoryHeadingsRef = useRef<HTMLElement[]>([]);
     const themeHeadingsRef = useRef<HTMLElement[]>([]);
@@ -165,7 +165,7 @@ export default function LayoutWrapper({
     useEffect(() => {
         if (activeView === 'classic') return;
         setHoveredItem(null);
-        setPinnedItem(null);
+        setExpandedItemKey(null);
     }, [activeView]);
 
     // Pack data to match demo component expectations
@@ -176,7 +176,7 @@ export default function LayoutWrapper({
         recommendedEvents: recommendedEvents,
         trackedUpdates: trackedUpdates
     };
-    const activeDigestItem = pinnedItem || hoveredItem;
+    const activeDigestItem = hoveredItem;
 
     const getItemKey = (item: any) => {
         const url = typeof item?.url === 'string' ? item.url : '';
@@ -463,25 +463,98 @@ export default function LayoutWrapper({
                                                                         key={idx}
                                                                         className="flex gap-3 items-start relative group/item cursor-pointer"
                                                                         onMouseEnter={() => {
-                                                                            if (pinnedItem) return;
                                                                             setHoveredItem(item);
                                                                         }}
                                                                         onMouseLeave={() => {
-                                                                            if (pinnedItem) return;
                                                                             setHoveredItem(null);
                                                                         }}
                                                                         onClick={() => {
                                                                             const key = getItemKey(item);
-                                                                            setPinnedItem((prev: any) => (getItemKey(prev) === key ? null : item));
                                                                             setHoveredItem(item);
+                                                                            setExpandedItemKey((prev) => (prev === key ? null : key));
                                                                         }}
                                                                     >
                                                                         <span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0 group-hover/item:bg-blue-600 dark:group-hover/item:bg-blue-400 transition-colors" />
-                                                                        <p className="text-stone-800 dark:text-stone-200 leading-relaxed text-base font-medium">
-                                                                            {item.headline}
-                                                                            {item.summary ? `，${item.summary}` : ''}
-                                                                            {renderCitations(item)}
-                                                                        </p>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <p className="text-stone-800 dark:text-stone-200 leading-relaxed text-base font-medium">
+                                                                                {item.headline}
+                                                                                {item.summary ? `，${item.summary}` : ''}
+                                                                                {renderCitations(item)}
+                                                                            </p>
+                                                                            {expandedItemKey === getItemKey(item) && (
+                                                                                <div className="mt-3 pl-4 border-l border-stone-200 dark:border-stone-800 space-y-3">
+                                                                                    {(Array.isArray(item?.relatedTrackers) ? item.relatedTrackers : []).length > 0 ? (
+                                                                                        <div className="space-y-2">
+                                                                                            <div className="text-[10px] font-black text-stone-500 dark:text-stone-400 uppercase tracking-[0.28em]">
+                                                                                                相关追踪
+                                                                                            </div>
+                                                                                            <div className="space-y-2">
+                                                                                                {(item.relatedTrackers || []).map((t: any, rIdx: number) => (
+                                                                                                    <div key={rIdx} className="space-y-1">
+                                                                                                        <Link
+                                                                                                            href={`/events/${encodeURIComponent(t.id)}`}
+                                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                                            className="inline-flex items-center gap-2 text-sm font-semibold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                                                                                        >
+                                                                                                            {t.name}
+                                                                                                            <ArrowUpRight className="w-4 h-4" />
+                                                                                                        </Link>
+                                                                                                        {t.lastNodeHeadline && (
+                                                                                                            <div className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2">
+                                                                                                                {t.lastNodeDate ? `${t.lastNodeDate} · ` : ''}{t.lastNodeHeadline}
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="space-y-2">
+                                                                                            <div className="text-[10px] font-black text-stone-500 dark:text-stone-400 uppercase tracking-[0.28em]">
+                                                                                                引用来源
+                                                                                            </div>
+                                                                                            {(() => {
+                                                                                                const citations = Array.isArray(item?.citations)
+                                                                                                    ? item.citations.filter((c: any) => {
+                                                                                                        const title = typeof c?.title === 'string' ? c.title.trim() : '';
+                                                                                                        const url = typeof c?.url === 'string' ? c.url.trim() : '';
+                                                                                                        return Boolean(title && url);
+                                                                                                    })
+                                                                                                    : [];
+                                                                                                if (citations.length === 0) {
+                                                                                                    return (
+                                                                                                        <div className="text-sm text-stone-500 dark:text-stone-400">
+                                                                                                            无可用引用
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                }
+                                                                                                return (
+                                                                                                    <div className="space-y-2">
+                                                                                                        {citations.map((c: any, cIdx: number) => (
+                                                                                                            <a
+                                                                                                                key={`${c?.url || cIdx}`}
+                                                                                                                href={c?.url || ''}
+                                                                                                                target="_blank"
+                                                                                                                rel="noopener noreferrer"
+                                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                                                className="block"
+                                                                                                            >
+                                                                                                                <div className="text-sm font-semibold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors line-clamp-2">
+                                                                                                                    {c?.title || ''}
+                                                                                                                </div>
+                                                                                                                <div className="text-xs text-stone-500 dark:text-stone-400">
+                                                                                                                    {c?.source || '来源'}
+                                                                                                                </div>
+                                                                                                            </a>
+                                                                                                        ))}
+                                                                                                    </div>
+                                                                                                );
+                                                                                            })()}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -510,26 +583,11 @@ export default function LayoutWrapper({
                                                         <h3 className="text-[10px] font-black text-stone-900 dark:text-white uppercase tracking-[0.3em]">
                                                             相关追踪
                                                         </h3>
-                                                        {pinnedItem && (
-                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-stone-500 dark:text-stone-400 uppercase tracking-widest">
-                                                                <Pin className="w-3 h-3" /> Pinned
-                                                            </span>
-                                                        )}
                                                     </div>
                                                     <p className="text-xs text-stone-500 dark:text-stone-400 leading-snug line-clamp-3">
                                                         {activeDigestItem.headline}
                                                     </p>
                                                 </div>
-                                                {pinnedItem && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setPinnedItem(null)}
-                                                        className="shrink-0 p-2 rounded-md hover:bg-stone-100 dark:hover:bg-stone-900 text-stone-500 hover:text-stone-900 dark:hover:text-white transition-colors"
-                                                        aria-label="unpin"
-                                                    >
-                                                        <X className="w-4 h-4" />
-                                                    </button>
-                                                )}
                                             </div>
 
                                             <div className="space-y-6 relative">

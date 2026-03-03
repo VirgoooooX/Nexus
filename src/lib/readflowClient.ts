@@ -1,6 +1,16 @@
 import { prisma } from '@/lib/db';
+import { stripHtmlToText, truncateText } from '@/lib/utils';
+import { cleanBatch } from '@/lib/cleanServer';
 
 export type ReadflowCleanedArticle = {
+    title: string;
+    url: string;
+    sourceName: string;
+    content: string;
+    publishedAt: string;
+};
+
+export type ReadflowRawArticle = {
     title: string;
     url: string;
     sourceName: string;
@@ -235,21 +245,50 @@ export async function updateConfigSync(
 }
 
 export async function getCleanedArticles(start: string, end: string): Promise<ReadflowCleanedArticle[]> {
+    const raw = await getRawArticles(start, end);
+    const cleaned = await cleanBatch(
+        raw.map((a) => ({
+            url: a.url,
+            title: a.title,
+            sourceName: a.sourceName,
+            publishedAt: a.publishedAt,
+            content: a.content,
+        }))
+    );
+
+    return raw.map((a, i) => {
+        const r = cleaned[i]?.result;
+        const url = r?.url || a.url;
+        const title = r?.title || a.title;
+        const contentInput = r?.content || a.content || a.title || '';
+        return {
+            ...a,
+            url,
+            title,
+            content: truncateText(stripHtmlToText(contentInput), 1500),
+        };
+    });
+}
+
+export async function getRawArticles(start: string, end: string, userId?: string): Promise<ReadflowRawArticle[]> {
     const serverUrl = await getReadflowServerUrl();
-    const url = new URL('/api/rss/daily-reports/articles/cleaned', serverUrl);
+    const url = new URL('/api/rss/daily-reports/articles/raw', serverUrl);
     url.searchParams.set('start', start);
     url.searchParams.set('end', end);
+    if (typeof userId === 'string' && userId.trim()) {
+        url.searchParams.set('userId', userId.trim());
+    }
 
     const res = await authedFetch(url, { method: 'GET' }, true);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`Readflow get cleaned articles failed: ${res.status} ${text}`);
+        throw new Error(`Readflow get raw articles failed: ${res.status} ${text}`);
     }
 
     const data: unknown = await res.json();
     if (!isRecord(data)) return [];
     const articles = data.articles;
-    return Array.isArray(articles) ? (articles as ReadflowCleanedArticle[]) : [];
+    return Array.isArray(articles) ? (articles as ReadflowRawArticle[]) : [];
 }
 
 export async function clientSync(payload: unknown): Promise<unknown> {

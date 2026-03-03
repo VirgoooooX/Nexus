@@ -1,15 +1,20 @@
 import { prisma } from '@/lib/db';
 import { getSettings } from '@/app/actions/settingsActions';
 import LayoutWrapper from '@/components/dashboard/LayoutWrapper';
+import { formatDateInTimeZone } from '@/lib/utils';
 
 export const revalidate = 0;
 
 export default async function HomePage() {
-  const today = new Date().toISOString().split('T')[0];
+  const todayUtc = new Date().toISOString().split('T')[0];
+  const today = formatDateInTimeZone('Asia/Shanghai');
+
+  console.log(`[HomePage] todayUtc=${todayUtc} todayShanghai=${today}`);
 
   const digest = await prisma.dailyDigest.findUnique({
     where: { date: today }
   });
+  console.log(`[HomePage] digestLookup date=${today} found=${Boolean(digest)} id=${digest?.id || ''} rawJsonLen=${digest?.rawJson?.length || 0} contentLen=${digest?.content?.length || 0}`);
 
   let categories = [];
   let overallSummary = '';
@@ -28,7 +33,10 @@ export default async function HomePage() {
       if (categories.length === 0 && parsed.items?.length > 0) {
         categories = [{ name: '科技热点', icon: 'cpu', items: parsed.items }];
       }
-    } catch (e) { }
+      console.log(`[HomePage] rawJsonParsed ok=true categories=${categories.length} overallSummaryLen=${overallSummary.length} recommendedEvents=${recommendedEvents.length} trackedUpdates=${trackedUpdates.length}`);
+    } catch (e: any) {
+      console.error(`[HomePage] rawJsonParsed ok=false err=${String(e)}`);
+    }
   }
 
   // Fetch custom category order and sort
@@ -53,6 +61,7 @@ export default async function HomePage() {
   });
 
   const hasData = categories.length > 0;
+  console.log(`[HomePage] render today=${today} hasData=${hasData} totalItems=${totalItems}`);
 
   return (
     <>

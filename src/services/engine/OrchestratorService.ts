@@ -220,11 +220,13 @@ export class OrchestratorService {
     async runDaily() {
         console.log(`[Orchestrator] Starting daily run...`);
         const dateStr = formatDateInTimeZone('Asia/Shanghai');
+        console.log(`[Orchestrator] date=${dateStr}`);
 
         // 1. Daily Digest
         let digestResult = null;
         try {
             digestResult = await dailyDigestEngine.runDailyDigest(dateStr);
+            console.log(`[Orchestrator] digest ok=${Boolean(digestResult)} digestId=${(digestResult as any)?.id || ''}`);
         } catch (err) {
             console.error(`[Orchestrator] Failed to run daily digest:`, err);
         }
@@ -232,12 +234,14 @@ export class OrchestratorService {
         let trackingResults = null;
         try {
             trackingResults = digestResult ? await writeTrackedUpdatesAsEventNodes(dateStr, (digestResult as any).rawJson) : null;
+            if (trackingResults) console.log(`[Orchestrator] trackedNodes created=${(trackingResults as any).created || 0} skipped=${(trackingResults as any).skipped || 0}`);
         } catch (err) {
             console.error(`[Orchestrator] Failed to write tracked updates as nodes:`, err);
         }
 
         try {
             await attachRelatedTrackersToDigest(dateStr);
+            console.log(`[Orchestrator] attachRelatedTrackers done date=${dateStr}`);
         } catch (err) {
             console.error(`[Orchestrator] Failed to attach related trackers:`, err);
         }

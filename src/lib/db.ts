@@ -1,11 +1,16 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import path from 'node:path';
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient() {
     console.log('[DEBUG] Initializing Prisma with DATABASE_URL:', process.env.DATABASE_URL);
+    console.log('[DEBUG] Prisma process.cwd:', process.cwd());
     const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
+    if (dbUrl.startsWith('file:./')) {
+        console.log('[DEBUG] Prisma resolved sqlite path:', path.resolve(process.cwd(), dbUrl.slice('file:./'.length)));
+    }
 
     // Safety check: ensure dbUrl is a string
     if (typeof dbUrl !== 'string') {

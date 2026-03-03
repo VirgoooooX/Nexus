@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { Citation, IAIProvider, DailyNewsResult, EventUpdateResult, SynthesisResult, TrackedUpdate } from './types';
 import { DAILY_NEWS_PROMPT, EVENT_UPDATE_PROMPT, SYNTHESIS_PROMPT } from './prompts';
+import { parseJsonLenient } from './safeJsonParsing';
 
 export class AISearchService implements IAIProvider {
     private _client: OpenAI | null = null;
@@ -117,17 +118,7 @@ export class AISearchService implements IAIProvider {
     }
 
     private parseJSON<T>(raw: string): T {
-        // 去掉可能的 markdown 代码块标记
-        let cleaned = raw.trim();
-        if (cleaned.startsWith('```json')) {
-            cleaned = cleaned.replace(/```json\n?/g, '');
-        }
-        if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/```\n?/g, '');
-        }
-        cleaned = cleaned.replace(/```\n?$/g, '').trim();
-
-        return JSON.parse(cleaned) as T;
+        return parseJsonLenient<T>(raw);
     }
 
     private buildAllowedUrlToSource(articles: unknown[]) {
@@ -142,7 +133,19 @@ export class AISearchService implements IAIProvider {
         return m;
     }
 
-    private normalizeCitations(raw: unknown, allowedUrlToSource?: Map<string, string>) {
+    private buildAllowedUrlToTitle(articles: unknown[]) {
+        const m = new Map<string, string>();
+        for (const a of articles) {
+            const url = typeof (a as any)?.url === 'string' ? (a as any).url.trim() : '';
+            if (!url) continue;
+            const title = typeof (a as any)?.title === 'string' ? (a as any).title.trim() : '';
+            if (!title) continue;
+            m.set(url, title);
+        }
+        return m;
+    }
+
+    private normalizeCitations(raw: unknown, allowedUrlToSource?: Map<string, string>, allowedUrlToTitle?: Map<string, string>) {
         const list = Array.isArray(raw) ? raw : [];
         const out: Citation[] = [];
         const seen = new Set<string>();
@@ -155,17 +158,24 @@ export class AISearchService implements IAIProvider {
             seen.add(url);
             const fallbackSource = allowedUrlToSource ? allowedUrlToSource.get(url) || '' : '';
             const source = typeof (c as any).source === 'string' ? (c as any).source.trim() : fallbackSource;
-            out.push({ source, url });
+            const title =
+                allowedUrlToTitle && allowedUrlToTitle.has(url)
+                    ? (allowedUrlToTitle.get(url) || '').trim()
+                    : typeof (c as any).title === 'string'
+                        ? (c as any).title.trim()
+                        : '';
+            if (!title) continue;
+            out.push({ source, url, title });
             if (out.length >= 3) break;
         }
         return out;
     }
 
-    private normalizeNewsItem(x: any, allowedUrlToSource?: Map<string, string>) {
+    private normalizeNewsItem(x: any, allowedUrlToSource?: Map<string, string>, allowedUrlToTitle?: Map<string, string>) {
         const headline = typeof x?.headline === 'string' ? x.headline : '';
         const summary = typeof x?.summary === 'string' ? x.summary : undefined;
 
-        const directCitations = this.normalizeCitations(x?.citations, allowedUrlToSource);
+        const directCitations = this.normalizeCitations(x?.citations, allowedUrlToSource, allowedUrlToTitle);
         const legacyUrl = typeof x?.url === 'string' ? x.url.trim() : '';
         const legacySource = typeof x?.source === 'string' ? x.source.trim() : '';
         const legacyEvidenceUrls = Array.isArray(x?.evidenceUrls)
@@ -178,7 +188,9 @@ export class AISearchService implements IAIProvider {
             if (allowedUrlToSource && !allowedUrlToSource.has(url)) return;
             if (citations.some((c) => c.url === url)) return;
             const fallbackSource = allowedUrlToSource ? allowedUrlToSource.get(url) || '' : '';
-            citations.push({ source: (source || fallbackSource).trim(), url });
+            const title = allowedUrlToTitle ? (allowedUrlToTitle.get(url) || '').trim() : '';
+            if (!title) return;
+            citations.push({ source: (source || fallbackSource).trim(), url, title });
         };
         if (citations.length === 0) {
             pushLegacy(legacyUrl, legacySource);
@@ -192,6 +204,7 @@ export class AISearchService implements IAIProvider {
     private normalizeTrackedUpdates(
         raw: unknown,
         allowedUrlToSource: Map<string, string> | undefined,
+        allowedUrlToTitle: Map<string, string> | undefined,
         allowedEventIds: Set<string> | undefined,
         eventNameById: Map<string, string> | undefined
     ): TrackedUpdate[] {
@@ -215,7 +228,7 @@ export class AISearchService implements IAIProvider {
                 .map((h: any) => {
                     const headline = typeof h?.headline === 'string' ? h.headline : '';
                     const summary = typeof h?.summary === 'string' ? h.summary : undefined;
-                    const citations = this.normalizeCitations(h?.citations, allowedUrlToSource);
+                    const citations = this.normalizeCitations(h?.citations, allowedUrlToSource, allowedUrlToTitle);
                     if (!headline || citations.length === 0) return null;
                     return { headline, summary, citations };
                 })
@@ -230,13 +243,14 @@ export class AISearchService implements IAIProvider {
     private normalizeDailyNewsResult(
         raw: DailyNewsResult,
         allowedUrlToSource?: Map<string, string>,
+        allowedUrlToTitle?: Map<string, string>,
         allowedEventIds?: Set<string>,
         eventNameById?: Map<string, string>
     ): DailyNewsResult {
         const normalizeItemsArray = (itemsRaw: unknown) => {
             const items = Array.isArray(itemsRaw) ? itemsRaw : [];
             return items
-                .map((x: any) => this.normalizeNewsItem(x, allowedUrlToSource))
+                .map((x: any) => this.normalizeNewsItem(x, allowedUrlToSource, allowedUrlToTitle))
                 .filter((x): x is NonNullable<typeof x> => x !== null) as any;
         };
 
@@ -275,7 +289,7 @@ export class AISearchService implements IAIProvider {
                         reason: typeof e?.reason === 'string' ? e.reason : '',
                     }))
                 : [],
-            trackedUpdates: this.normalizeTrackedUpdates((raw as any)?.trackedUpdates, allowedUrlToSource, allowedEventIds, eventNameById),
+            trackedUpdates: this.normalizeTrackedUpdates((raw as any)?.trackedUpdates, allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById),
         };
     }
 
@@ -317,9 +331,18 @@ export class AISearchService implements IAIProvider {
         const promptText = await this.buildDailyNewsPrompt(date, articles, activeTrackers);
         const raw = await this.chat(promptText);
         const allowedUrlToSource = this.buildAllowedUrlToSource(articles);
+        const allowedUrlToTitle = this.buildAllowedUrlToTitle(articles);
         const allowedEventIds = new Set(activeTrackers.map((t) => t.eventId));
         const eventNameById = new Map(activeTrackers.map((t) => [t.eventId, t.eventName]));
-        return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedEventIds, eventNameById);
+        try {
+            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById);
+        } catch (e: unknown) {
+            const retryPrompt =
+                promptText +
+                '\n\n你上一次输出无法解析为 JSON。请严格只输出合法 JSON（必须以 { 开头，以 } 结尾），不要包含任何解释文本、不要 markdown 代码块。';
+            const raw2 = await this.chat(retryPrompt);
+            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw2), allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById);
+        }
     }
 
     async searchEventUpdate(eventName: string, searchQuery: string, lastCheckedDate: string): Promise<EventUpdateResult> {

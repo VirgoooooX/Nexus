@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { getIconComponent } from "./IconHelper";
 
 type AccentKey = "blue" | "violet" | "amber" | "emerald" | "cyan" | "rose" | "slate" | "orange" | "indigo" | "lime";
@@ -361,10 +361,6 @@ export default function MasonryView({ data }: { data: any }) {
                                                                         ）
                                                                     </div>
                                                                 )}
-                                                                <div className={`flex items-center gap-1 mt-2 text-[11px] font-black uppercase tracking-wider text-stone-400 transition-colors ${accent.microLink}`}>
-                                                                    <span>打开引用</span>
-                                                                    <ArrowUpRight className="w-3 h-3" />
-                                                                </div>
                                                             </a>
                                                         );
                                                     })}

@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+.venv
+.venv/
+
 /src/generated/prisma
 prisma/dev.db
 dev.db
@@ -47,3 +50,6 @@ findings.md
 progress.md
 task_plan.md
 docs/plans/2026-03-01-digest-theme-citations-tracked-updates.md
+docs/plans/2026-03-02-gnews-google-news-enrichment.md
+docs/plans/2026-03-03-clean-server-design.md
+docs/plans/2026-03-03-clean-server-implementation.md

@@ -17,6 +17,7 @@ export class DailyDigestEngine {
         }
 
         const articles = await getCleanedArticles(dateStr, dateStr);
+        console.log(`[DailyDigestEngine] cleanedArticles date=${dateStr} count=${Array.isArray(articles) ? articles.length : 0}`);
         const activeTrackers = await prisma.trackedEvent.findMany({
             where: { status: 'ACTIVE' },
             select: { id: true, name: true, searchQuery: true }
@@ -106,7 +107,7 @@ export class DailyDigestEngine {
             }
         });
 
-        console.log(`[DailyDigestEngine] Digest saved successfully.`);
+        console.log(`[DailyDigestEngine] Digest saved successfully. id=${digest.id} date=${digest.date}`);
         return digest;
     }
 }
