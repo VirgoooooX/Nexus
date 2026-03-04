@@ -4,6 +4,18 @@ import React from "react";
 import { ChevronDown } from "lucide-react";
 import { getIconComponent } from "./IconHelper";
 
+const resolveExternalHref = (raw: unknown) => {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (!s) return '';
+    try {
+        const u = new URL(s);
+        if (u.hostname === 'news.google.com') {
+            return `/api/resolve?url=${encodeURIComponent(s)}`;
+        }
+    } catch { }
+    return s;
+};
+
 type AccentKey = "blue" | "violet" | "amber" | "emerald" | "cyan" | "rose" | "slate" | "orange" | "indigo" | "lime";
 type AccentConfig = {
     border: string;
@@ -335,7 +347,7 @@ export default function MasonryView({ data }: { data: any }) {
                                                                 : [];
                                                         return (
                                                             <a
-                                                                href={item?.url || citations[0]?.url || '#'}
+                                                                href={resolveExternalHref(item?.url || citations[0]?.url || '#')}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 key={iIdx}
@@ -344,11 +356,20 @@ export default function MasonryView({ data }: { data: any }) {
                                                                 <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
                                                                     {item.headline}
                                                                 </h5>
-                                                                {item.summary && (
+                                                                {Array.isArray(item?.bullets) && item.bullets.length > 0 ? (
+                                                                    <ul className="mt-2 space-y-1 text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+                                                                        {item.bullets.slice(0, 4).map((b: any, bIdx: number) => (
+                                                                            <li key={bIdx} className="flex gap-2">
+                                                                                <span className="mt-[7px] w-1 h-1 rounded-full bg-stone-300 dark:bg-stone-700 shrink-0" />
+                                                                                <span className="line-clamp-2">{typeof b === 'string' ? b : ''}</span>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                ) : item.summary ? (
                                                                     <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
                                                                         {item.summary}
                                                                     </p>
-                                                                )}
+                                                                ) : null}
                                                                 {citations.length > 0 && (
                                                                     <div className="mt-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
                                                                         （
@@ -378,7 +399,7 @@ export default function MasonryView({ data }: { data: any }) {
                                                             : [];
                                                     return (
                                                         <a
-                                                            href={item?.url || citations[0]?.url || '#'}
+                                                            href={resolveExternalHref(item?.url || citations[0]?.url || '#')}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             key={iIdx}
@@ -387,11 +408,20 @@ export default function MasonryView({ data }: { data: any }) {
                                                             <h5 className={`text-[17px] font-bold text-stone-950 dark:text-stone-100 leading-snug transition-colors ${accent.linkHover}`}>
                                                                 {item.headline}
                                                             </h5>
-                                                            {item.summary && (
+                                                            {Array.isArray(item?.bullets) && item.bullets.length > 0 ? (
+                                                                <ul className="mt-2 space-y-1 text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+                                                                    {item.bullets.slice(0, 4).map((b: any, bIdx: number) => (
+                                                                        <li key={bIdx} className="flex gap-2">
+                                                                            <span className="mt-[7px] w-1 h-1 rounded-full bg-stone-300 dark:bg-stone-700 shrink-0" />
+                                                                            <span className="line-clamp-2">{typeof b === 'string' ? b : ''}</span>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : item.summary ? (
                                                                 <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 line-clamp-2 leading-relaxed">
                                                                     {item.summary}
                                                                 </p>
-                                                            )}
+                                                            ) : null}
                                                             {citations.length > 0 && (
                                                                 <div className="mt-2 text-[11px] font-bold text-stone-500 dark:text-stone-400">
                                                                     （

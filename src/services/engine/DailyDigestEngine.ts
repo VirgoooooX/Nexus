@@ -39,7 +39,7 @@ export class DailyDigestEngine {
                         citations.length > 0
                             ? `（${citations.map((c: any) => `[${c.source || '来源'}](${c.url})`).join(', ')}）`
                             : '';
-                    markdown += `- ${h.headline}${h.summary ? `：${h.summary}` : ''}${refs}\n`;
+                    markdown += `- ${h.headline}${refs}\n`;
                 }
                 markdown += `\n`;
             }
@@ -61,7 +61,12 @@ export class DailyDigestEngine {
                                     : item.url
                                         ? `（[${item.source || '来源'}](${item.url})）`
                                         : '';
-                            markdown += `- ${item.headline}${item.summary ? `：${item.summary}` : ''}${refs}\n`;
+                            markdown += `- ${item.headline}${refs}\n`;
+                            const bullets = Array.isArray((item as any).bullets) ? (item as any).bullets : [];
+                            for (const b of bullets) {
+                                if (typeof b !== 'string' || !b.trim()) continue;
+                                markdown += `  - ${b.trim()}\n`;
+                            }
                         });
                         markdown += `\n`; // spacing between themes
                     });
@@ -76,7 +81,12 @@ export class DailyDigestEngine {
                                 : item.url
                                     ? `（[${item.source || '来源'}](${item.url})）`
                                     : '';
-                        markdown += `- ${item.headline}${item.summary ? `：${item.summary}` : ''}${refs}\n`;
+                        markdown += `- ${item.headline}${refs}\n`;
+                        const bullets = Array.isArray((item as any).bullets) ? (item as any).bullets : [];
+                        for (const b of bullets) {
+                            if (typeof b !== 'string' || !b.trim()) continue;
+                            markdown += `  - ${b.trim()}\n`;
+                        }
                     });
                     markdown += `\n`;
                 }

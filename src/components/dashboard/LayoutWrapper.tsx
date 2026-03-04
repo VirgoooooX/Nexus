@@ -3,6 +3,8 @@
 import React, { useRef, useState, useEffect } from "react";
 import { Sparkles, ExternalLink, RefreshCw, LayoutTemplate, ArrowUpRight } from "lucide-react";
 import Link from 'next/link';
+import { TimelineView } from '@/components/timeline/TimelineView';
+import { selectTimelineNodes } from '@/components/dashboard/timelineUtils';
 
 // Import views
 import MasonryView from "@/components/dashboard/views/MasonryView";
@@ -30,6 +32,10 @@ export default function LayoutWrapper({
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [hoveredItem, setHoveredItem] = useState<any | null>(null);
     const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
+    const [trackerTimelineExpanded, setTrackerTimelineExpanded] = useState<Record<string, boolean>>({});
+    const [trackerTimelineCache, setTrackerTimelineCache] = useState<Record<string, any[]>>({});
+    const [trackerTimelineLoading, setTrackerTimelineLoading] = useState<Record<string, boolean>>({});
+    const [trackerTimelineError, setTrackerTimelineError] = useState<Record<string, string>>({});
     const rafIdRef = useRef<number | null>(null);
     const categoryHeadingsRef = useRef<HTMLElement[]>([]);
     const themeHeadingsRef = useRef<HTMLElement[]>([]);
@@ -168,6 +174,41 @@ export default function LayoutWrapper({
         setExpandedItemKey(null);
     }, [activeView]);
 
+    useEffect(() => {
+        if (!expandedItemKey) return;
+        const item = hoveredItem;
+        const trackers = Array.isArray(item?.relatedTrackers) ? item.relatedTrackers : [];
+        for (const t of trackers) {
+            const eventId = typeof t?.id === 'string' ? t.id : '';
+            if (!eventId) continue;
+            ensureTrackerTimelineLoaded(eventId);
+        }
+    }, [expandedItemKey]);
+
+    const ensureTrackerTimelineLoaded = async (eventId: string) => {
+        if (!eventId) return;
+        if (trackerTimelineCache[eventId]) return;
+        if (trackerTimelineLoading[eventId]) return;
+
+        setTrackerTimelineLoading((prev) => ({ ...prev, [eventId]: true }));
+        setTrackerTimelineError((prev) => {
+            const { [eventId]: _, ...rest } = prev;
+            return rest;
+        });
+
+        try {
+            const res = await fetch(`/api/events/${encodeURIComponent(eventId)}`, { method: 'GET' });
+            if (!res.ok) throw new Error(`http_${res.status}`);
+            const data = await res.json();
+            const nodes = Array.isArray(data?.event?.nodes) ? data.event.nodes : [];
+            setTrackerTimelineCache((prev) => ({ ...prev, [eventId]: nodes }));
+        } catch (e: unknown) {
+            setTrackerTimelineError((prev) => ({ ...prev, [eventId]: String((e as any)?.message || e) }));
+        } finally {
+            setTrackerTimelineLoading((prev) => ({ ...prev, [eventId]: false }));
+        }
+    };
+
     // Pack data to match demo component expectations
     const mockDataFormat = {
         date: today,
@@ -188,6 +229,18 @@ export default function LayoutWrapper({
         return typeof item?.headline === 'string' ? item.headline : '';
     };
 
+    const resolveExternalHref = (raw: unknown) => {
+        const s = typeof raw === 'string' ? raw.trim() : '';
+        if (!s) return '';
+        try {
+            const u = new URL(s);
+            if (u.hostname === 'news.google.com') {
+                return `/api/resolve?url=${encodeURIComponent(s)}`;
+            }
+        } catch { }
+        return s;
+    };
+
     const renderCitations = (item: any) => {
         const citations = Array.isArray(item?.citations) ? item.citations : [];
         if (citations.length > 0) {
@@ -197,7 +250,7 @@ export default function LayoutWrapper({
                     {citations.slice(0, 3).map((c: any, idx: number) => (
                         <React.Fragment key={`${c?.url || idx}`}>
                             <a
-                                href={c?.url || ''}
+                                href={resolveExternalHref(c?.url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
@@ -219,7 +272,7 @@ export default function LayoutWrapper({
             <span className="text-stone-500 dark:text-stone-400">
                 （
                 <a
-                    href={url}
+                    href={resolveExternalHref(url)}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
@@ -230,6 +283,24 @@ export default function LayoutWrapper({
                 ）
             </span>
         );
+    };
+
+    const formatCitationTime = (raw: unknown) => {
+        const s = typeof raw === 'string' ? raw.trim() : '';
+        if (!s) return '';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return '';
+        try {
+            return new Intl.DateTimeFormat('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            }).format(d);
+        } catch {
+            return '';
+        }
     };
 
     if (!hasData) {
@@ -457,7 +528,7 @@ export default function LayoutWrapper({
                                                                     {theme.themeName}
                                                                 </h3>
                                                             </div>
-                                                            <ul className="space-y-4">
+                                                            <ul className="space-y-5">
                                                                 {theme.items.map((item: any, idx: number) => (
                                                                     <li
                                                                         key={idx}
@@ -476,36 +547,98 @@ export default function LayoutWrapper({
                                                                     >
                                                                         <span className="mt-2 w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0 group-hover/item:bg-blue-600 dark:group-hover/item:bg-blue-400 transition-colors" />
                                                                         <div className="flex-1 min-w-0">
-                                                                            <p className="text-stone-800 dark:text-stone-200 leading-relaxed text-base font-medium">
-                                                                                {item.headline}
-                                                                                {item.summary ? `，${item.summary}` : ''}
-                                                                                {renderCitations(item)}
-                                                                            </p>
+                                                                            <div className="space-y-3">
+                                                                                <p className="text-stone-800 dark:text-stone-200 text-[17px] leading-[1.85] font-semibold">
+                                                                                    {item.headline}
+                                                                                    {renderCitations(item)}
+                                                                                </p>
+                                                                                {Array.isArray(item?.bullets) && item.bullets.length > 0 && (
+                                                                                    <ul className="space-y-2 text-[14px] text-stone-600 dark:text-stone-400 leading-[1.75]">
+                                                                                        {item.bullets.slice(0, 4).map((b: any, bIdx: number) => (
+                                                                                            <li key={bIdx} className="flex gap-2">
+                                                                                                <span className="mt-[8px] w-1 h-1 rounded-full bg-stone-300 dark:bg-stone-700 shrink-0" />
+                                                                                                <span className="line-clamp-2">{typeof b === 'string' ? b : ''}</span>
+                                                                                            </li>
+                                                                                        ))}
+                                                                                    </ul>
+                                                                                )}
+                                                                            </div>
                                                                             {expandedItemKey === getItemKey(item) && (
-                                                                                <div className="mt-3 pl-4 border-l border-stone-200 dark:border-stone-800 space-y-3">
+                                                                                <div className="mt-4 pl-4 border-l border-stone-200 dark:border-stone-800 space-y-4">
                                                                                     {(Array.isArray(item?.relatedTrackers) ? item.relatedTrackers : []).length > 0 ? (
                                                                                         <div className="space-y-2">
                                                                                             <div className="text-[10px] font-black text-stone-500 dark:text-stone-400 uppercase tracking-[0.28em]">
                                                                                                 相关追踪
                                                                                             </div>
                                                                                             <div className="space-y-2">
-                                                                                                {(item.relatedTrackers || []).map((t: any, rIdx: number) => (
-                                                                                                    <div key={rIdx} className="space-y-1">
-                                                                                                        <Link
-                                                                                                            href={`/events/${encodeURIComponent(t.id)}`}
-                                                                                                            onClick={(e) => e.stopPropagation()}
-                                                                                                            className="inline-flex items-center gap-2 text-sm font-semibold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                                                                                                        >
-                                                                                                            {t.name}
-                                                                                                            <ArrowUpRight className="w-4 h-4" />
-                                                                                                        </Link>
-                                                                                                        {t.lastNodeHeadline && (
-                                                                                                            <div className="text-xs text-stone-500 dark:text-stone-400 line-clamp-2">
-                                                                                                                {t.lastNodeDate ? `${t.lastNodeDate} · ` : ''}{t.lastNodeHeadline}
+                                                                                                {(item.relatedTrackers || []).map((t: any, rIdx: number) => {
+                                                                                                    const itemKey = getItemKey(item);
+                                                                                                    const eventId = typeof t?.id === 'string' ? t.id : '';
+                                                                                                    const expanded = Boolean(trackerTimelineExpanded[eventId]);
+                                                                                                    const loading = Boolean(trackerTimelineLoading[eventId]);
+                                                                                                    const error = trackerTimelineError[eventId];
+                                                                                                    const nodes = trackerTimelineCache[eventId] || [];
+                                                                                                    const visibleNodes = selectTimelineNodes(nodes, { expanded, defaultCount: 5 });
+
+                                                                                                    return (
+                                                                                                        <div key={rIdx} className="space-y-2">
+                                                                                                            <div className="group/row grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2 py-2 bg-stone-50/70 dark:bg-stone-900/35">
+                                                                                                                <div className="min-w-0 text-sm font-semibold text-stone-900 dark:text-stone-100 truncate">
+                                                                                                                    {t.name}
+                                                                                                                </div>
+                                                                                                                <div className="text-[11px] font-bold text-stone-500 dark:text-stone-400 tabular-nums whitespace-nowrap">
+                                                                                                                    {t.lastNodeDate ? t.lastNodeDate : 'Tracking'}
+                                                                                                                </div>
                                                                                                             </div>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                ))}
+
+                                                                                                            <div className="pl-2 pr-2">
+                                                                                                                {loading ? (
+                                                                                                                    <div className="py-6">
+                                                                                                                        <div className="h-3 w-32 rounded bg-stone-200/70 dark:bg-stone-800/70" />
+                                                                                                                        <div className="mt-3 h-3 w-56 rounded bg-stone-200/70 dark:bg-stone-800/70" />
+                                                                                                                        <div className="mt-3 h-3 w-44 rounded bg-stone-200/70 dark:bg-stone-800/70" />
+                                                                                                                    </div>
+                                                                                                                ) : error ? (
+                                                                                                                    <div className="py-4">
+                                                                                                                        <div className="text-sm text-stone-500 dark:text-stone-400">
+                                                                                                                            加载失败
+                                                                                                                        </div>
+                                                                                                                        <button
+                                                                                                                            type="button"
+                                                                                                                            onClick={async (e) => {
+                                                                                                                                e.stopPropagation();
+                                                                                                                                await ensureTrackerTimelineLoaded(eventId);
+                                                                                                                            }}
+                                                                                                                            className="mt-2 text-xs font-bold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                                                                                                        >
+                                                                                                                            重试
+                                                                                                                        </button>
+                                                                                                                    </div>
+                                                                                                                ) : nodes.length === 0 ? (
+                                                                                                                    <div className="py-4 text-sm text-stone-500 dark:text-stone-400">
+                                                                                                                        暂无时间线节点
+                                                                                                                    </div>
+                                                                                                                ) : (
+                                                                                                                    <div className="pt-2 pb-1">
+                                                                                                                        <TimelineView nodes={visibleNodes as any} variant="digest" />
+                                                                                                                        {nodes.length > 5 && (
+                                                                                                                            <button
+                                                                                                                                type="button"
+                                                                                                                                onClick={(e) => {
+                                                                                                                                    e.stopPropagation();
+                                                                                                                                    setTrackerTimelineExpanded((prev) => ({ ...prev, [eventId]: !expanded }));
+                                                                                                                                }}
+                                                                                                                                className="mt-2 text-xs font-bold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                                                                                                            >
+                                                                                                                                {expanded ? '收起' : '展开全部'}
+                                                                                                                            </button>
+                                                                                                                        )}
+                                                                                                                    </div>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                        </div>
+                                                                                                    );
+                                                                                                })}
                                                                                             </div>
                                                                                         </div>
                                                                                     ) : (
@@ -518,7 +651,8 @@ export default function LayoutWrapper({
                                                                                                     ? item.citations.filter((c: any) => {
                                                                                                         const title = typeof c?.title === 'string' ? c.title.trim() : '';
                                                                                                         const url = typeof c?.url === 'string' ? c.url.trim() : '';
-                                                                                                        return Boolean(title && url);
+                                                                                                        const publishedAt = typeof c?.publishedAt === 'string' ? c.publishedAt.trim() : '';
+                                                                                                        return Boolean(title && url && publishedAt);
                                                                                                     })
                                                                                                     : [];
                                                                                                 if (citations.length === 0) {
@@ -529,21 +663,25 @@ export default function LayoutWrapper({
                                                                                                     );
                                                                                                 }
                                                                                                 return (
-                                                                                                    <div className="space-y-2">
+                                                                                                    <div className="space-y-1.5">
                                                                                                         {citations.map((c: any, cIdx: number) => (
                                                                                                             <a
                                                                                                                 key={`${c?.url || cIdx}`}
-                                                                                                                href={c?.url || ''}
+                                                                                                                href={resolveExternalHref(c?.url)}
                                                                                                                 target="_blank"
                                                                                                                 rel="noopener noreferrer"
                                                                                                                 onClick={(e) => e.stopPropagation()}
-                                                                                                                className="block"
+                                                                                                                className="group/row grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-900/40 transition-colors"
                                                                                                             >
-                                                                                                                <div className="text-sm font-semibold text-stone-900 dark:text-stone-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors line-clamp-2">
+                                                                                                                <div className="min-w-0 text-sm font-semibold text-stone-900 dark:text-stone-100 group-hover/row:text-blue-700 dark:group-hover/row:text-blue-300 transition-colors truncate">
                                                                                                                     {c?.title || ''}
                                                                                                                 </div>
-                                                                                                                <div className="text-xs text-stone-500 dark:text-stone-400">
-                                                                                                                    {c?.source || '来源'}
+                                                                                                                <div className="text-[11px] font-bold text-stone-500 dark:text-stone-400 tabular-nums whitespace-nowrap">
+                                                                                                                    {(() => {
+                                                                                                                        const source = c?.source || '来源';
+                                                                                                                        const t = formatCitationTime(c?.publishedAt);
+                                                                                                                        return `${source}${t ? ` · ${t}` : ''}`;
+                                                                                                                    })()}
                                                                                                                 </div>
                                                                                                             </a>
                                                                                                         ))}

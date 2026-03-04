@@ -10,9 +10,10 @@ interface TimelineViewProps {
         content: string;
         sources: string;
     }>;
+    variant?: 'event' | 'digest';
 }
 
-export function TimelineView({ nodes }: TimelineViewProps) {
+export function TimelineView({ nodes, variant = 'event' }: TimelineViewProps) {
     if (!nodes || nodes.length === 0) {
         return (
             <div className="py-16 text-center">
@@ -31,6 +32,7 @@ export function TimelineView({ nodes }: TimelineViewProps) {
                     node={node}
                     isFirst={idx === 0}
                     isLast={idx === nodes.length - 1}
+                    variant={variant}
                 />
             ))}
         </div>

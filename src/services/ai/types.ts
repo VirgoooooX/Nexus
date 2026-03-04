@@ -2,14 +2,17 @@ export interface Citation {
     source: string;
     url: string;
     title: string;
+    publishedAt: string;
 }
 
 // 单条归纳结论
 export interface NewsItem {
     headline: string;
     summary?: string;
+    bullets?: string[];
     url: string;
     citations?: Citation[];
+    coveredUrls?: string[];
     source?: string;
     evidenceUrls?: string[];
 }

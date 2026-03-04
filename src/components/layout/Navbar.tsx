@@ -74,6 +74,9 @@ export function Navbar() {
                         <Link href="/" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                             日报
                         </Link>
+                        <Link href="/digests" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                            历史日报
+                        </Link>
                         <Link href="/events" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
                             事件追踪
                         </Link>

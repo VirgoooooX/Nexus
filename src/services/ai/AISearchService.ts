@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { Citation, IAIProvider, DailyNewsResult, EventUpdateResult, SynthesisResult, TrackedUpdate } from './types';
 import { DAILY_NEWS_PROMPT, EVENT_UPDATE_PROMPT, SYNTHESIS_PROMPT } from './prompts';
 import { parseJsonLenient } from './safeJsonParsing';
+import { normalizeCoveredUrls } from './coverage';
 
 export class AISearchService implements IAIProvider {
     private _client: OpenAI | null = null;
@@ -145,7 +146,24 @@ export class AISearchService implements IAIProvider {
         return m;
     }
 
-    private normalizeCitations(raw: unknown, allowedUrlToSource?: Map<string, string>, allowedUrlToTitle?: Map<string, string>) {
+    private buildAllowedUrlToPublishedAt(articles: unknown[]) {
+        const m = new Map<string, string>();
+        for (const a of articles) {
+            const url = typeof (a as any)?.url === 'string' ? (a as any).url.trim() : '';
+            if (!url) continue;
+            const publishedAt = typeof (a as any)?.publishedAt === 'string' ? (a as any).publishedAt.trim() : '';
+            if (!publishedAt) continue;
+            m.set(url, publishedAt);
+        }
+        return m;
+    }
+
+    private normalizeCitations(
+        raw: unknown,
+        allowedUrlToSource?: Map<string, string>,
+        allowedUrlToTitle?: Map<string, string>,
+        allowedUrlToPublishedAt?: Map<string, string>
+    ) {
         const list = Array.isArray(raw) ? raw : [];
         const out: Citation[] = [];
         const seen = new Set<string>();
@@ -165,17 +183,40 @@ export class AISearchService implements IAIProvider {
                         ? (c as any).title.trim()
                         : '';
             if (!title) continue;
-            out.push({ source, url, title });
-            if (out.length >= 3) break;
+            const publishedAt =
+                allowedUrlToPublishedAt && allowedUrlToPublishedAt.has(url)
+                    ? (allowedUrlToPublishedAt.get(url) || '').trim()
+                    : typeof (c as any).publishedAt === 'string'
+                        ? (c as any).publishedAt.trim()
+                        : '';
+            if (!publishedAt) continue;
+            out.push({ source, url, title, publishedAt });
+            if (out.length >= 6) break;
         }
         return out;
     }
 
-    private normalizeNewsItem(x: any, allowedUrlToSource?: Map<string, string>, allowedUrlToTitle?: Map<string, string>) {
+    private normalizeBullets(raw: unknown) {
+        const list = Array.isArray(raw) ? raw : [];
+        const out = list
+            .filter((x) => typeof x === 'string')
+            .map((x: string) => x.trim())
+            .filter(Boolean)
+            .slice(0, 4);
+        return out.length ? out : undefined;
+    }
+
+    private normalizeNewsItem(
+        x: any,
+        allowedUrlToSource?: Map<string, string>,
+        allowedUrlToTitle?: Map<string, string>,
+        allowedUrlToPublishedAt?: Map<string, string>
+    ) {
         const headline = typeof x?.headline === 'string' ? x.headline : '';
         const summary = typeof x?.summary === 'string' ? x.summary : undefined;
+        const bullets = this.normalizeBullets(x?.bullets);
 
-        const directCitations = this.normalizeCitations(x?.citations, allowedUrlToSource, allowedUrlToTitle);
+        const directCitations = this.normalizeCitations(x?.citations, allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt);
         const legacyUrl = typeof x?.url === 'string' ? x.url.trim() : '';
         const legacySource = typeof x?.source === 'string' ? x.source.trim() : '';
         const legacyEvidenceUrls = Array.isArray(x?.evidenceUrls)
@@ -190,21 +231,38 @@ export class AISearchService implements IAIProvider {
             const fallbackSource = allowedUrlToSource ? allowedUrlToSource.get(url) || '' : '';
             const title = allowedUrlToTitle ? (allowedUrlToTitle.get(url) || '').trim() : '';
             if (!title) return;
-            citations.push({ source: (source || fallbackSource).trim(), url, title });
+            const publishedAt = allowedUrlToPublishedAt ? (allowedUrlToPublishedAt.get(url) || '').trim() : '';
+            if (!publishedAt) return;
+            citations.push({ source: (source || fallbackSource).trim(), url, title, publishedAt });
         };
         if (citations.length === 0) {
             pushLegacy(legacyUrl, legacySource);
             for (const u of legacyEvidenceUrls) pushLegacy(u);
         }
         const url = citations[0]?.url || (allowedUrlToSource && allowedUrlToSource.has(legacyUrl) ? legacyUrl : '');
+        const isAllowed = (u: string) => (allowedUrlToSource ? allowedUrlToSource.has(u) : true);
+        const coveredUrls = normalizeCoveredUrls((x as any)?.coveredUrls ?? (x as any)?.evidenceUrls, isAllowed, {
+            seedUrls: [legacyUrl, ...citations.map((c) => c.url)],
+            max: 200,
+        });
         if (!headline || citations.length === 0) return null;
-        return { headline, summary, url, citations, source: legacySource || undefined, evidenceUrls: legacyEvidenceUrls.length ? legacyEvidenceUrls.slice(0, 3) : undefined };
+        return {
+            headline,
+            summary,
+            bullets,
+            url,
+            citations,
+            coveredUrls,
+            source: legacySource || undefined,
+            evidenceUrls: legacyEvidenceUrls.length ? legacyEvidenceUrls.slice(0, 3) : undefined
+        };
     }
 
     private normalizeTrackedUpdates(
         raw: unknown,
         allowedUrlToSource: Map<string, string> | undefined,
         allowedUrlToTitle: Map<string, string> | undefined,
+        allowedUrlToPublishedAt: Map<string, string> | undefined,
         allowedEventIds: Set<string> | undefined,
         eventNameById: Map<string, string> | undefined
     ): TrackedUpdate[] {
@@ -227,10 +285,9 @@ export class AISearchService implements IAIProvider {
                 .filter((h: unknown) => typeof h === 'object' && h !== null)
                 .map((h: any) => {
                     const headline = typeof h?.headline === 'string' ? h.headline : '';
-                    const summary = typeof h?.summary === 'string' ? h.summary : undefined;
-                    const citations = this.normalizeCitations(h?.citations, allowedUrlToSource, allowedUrlToTitle);
+                    const citations = this.normalizeCitations(h?.citations, allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt);
                     if (!headline || citations.length === 0) return null;
-                    return { headline, summary, citations };
+                    return { headline, citations };
                 })
                 .filter(Boolean)
                 .slice(0, 4) as any;
@@ -244,13 +301,14 @@ export class AISearchService implements IAIProvider {
         raw: DailyNewsResult,
         allowedUrlToSource?: Map<string, string>,
         allowedUrlToTitle?: Map<string, string>,
+        allowedUrlToPublishedAt?: Map<string, string>,
         allowedEventIds?: Set<string>,
         eventNameById?: Map<string, string>
     ): DailyNewsResult {
         const normalizeItemsArray = (itemsRaw: unknown) => {
             const items = Array.isArray(itemsRaw) ? itemsRaw : [];
             return items
-                .map((x: any) => this.normalizeNewsItem(x, allowedUrlToSource, allowedUrlToTitle))
+                .map((x: any) => this.normalizeNewsItem(x, allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt))
                 .filter((x): x is NonNullable<typeof x> => x !== null) as any;
         };
 
@@ -289,7 +347,7 @@ export class AISearchService implements IAIProvider {
                         reason: typeof e?.reason === 'string' ? e.reason : '',
                     }))
                 : [],
-            trackedUpdates: this.normalizeTrackedUpdates((raw as any)?.trackedUpdates, allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById),
+            trackedUpdates: this.normalizeTrackedUpdates((raw as any)?.trackedUpdates, allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById),
         };
     }
 
@@ -332,16 +390,17 @@ export class AISearchService implements IAIProvider {
         const raw = await this.chat(promptText);
         const allowedUrlToSource = this.buildAllowedUrlToSource(articles);
         const allowedUrlToTitle = this.buildAllowedUrlToTitle(articles);
+        const allowedUrlToPublishedAt = this.buildAllowedUrlToPublishedAt(articles);
         const allowedEventIds = new Set(activeTrackers.map((t) => t.eventId));
         const eventNameById = new Map(activeTrackers.map((t) => [t.eventId, t.eventName]));
         try {
-            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById);
+            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
         } catch (e: unknown) {
             const retryPrompt =
                 promptText +
                 '\n\n你上一次输出无法解析为 JSON。请严格只输出合法 JSON（必须以 { 开头，以 } 结尾），不要包含任何解释文本、不要 markdown 代码块。';
             const raw2 = await this.chat(retryPrompt);
-            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw2), allowedUrlToSource, allowedUrlToTitle, allowedEventIds, eventNameById);
+            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw2), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
         }
     }
 
