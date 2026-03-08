@@ -2,20 +2,22 @@
 
 import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
-import { DAILY_NEWS_PROMPT } from '@/services/ai/prompts'; // We will use this as default
+import { DEFAULT_PROMPT_CONFIG, type PromptConfig } from '@/lib/promptConfig';
+import { buildPromptFromConfig } from '@/lib/buildPromptFromConfig';
 
 // Default category order
 const DEFAULT_CATEGORIES = ['时政要闻', '前沿科技', '人工智能', '智能硬件', '商业财经', '社会民生', '娱乐文化', '电子游戏', '体育赛事'];
 
 export async function getSettings() {
     // Fetch settings from DB
-    const [categoriesConfig, promptConfig, layoutConfig, readflowUrlConfig, scheduleEnabledConfig, scheduleTimeConfig] = await Promise.all([
+    const [categoriesConfig, promptConfig, layoutConfig, readflowUrlConfig, scheduleEnabledConfig, scheduleTimeConfig, promptConfigDb] = await Promise.all([
         prisma.systemConfig.findUnique({ where: { key: 'CATEGORIES_ORDER' } }),
         prisma.systemConfig.findUnique({ where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' } }),
         prisma.systemConfig.findUnique({ where: { key: 'DEFAULT_LAYOUT' } }),
         prisma.systemConfig.findUnique({ where: { key: 'READFLOW_SERVER_URL' } }),
         prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_ENABLED' } }),
-        prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_TIME' } })
+        prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_TIME' } }),
+        prisma.systemConfig.findUnique({ where: { key: 'PROMPT_CONFIG' } })
     ]);
 
     let categoriesOrder = [...DEFAULT_CATEGORIES];
@@ -32,15 +34,24 @@ export async function getSettings() {
         }
     }
 
-    // Pass an empty string so the default function just returns the raw template
-    // We'll replace the placeholder dynamically during actual execution
-    const defaultPromptTemp = DAILY_NEWS_PROMPT('${date}');
-    const promptTemplate = promptConfig?.value || defaultPromptTemp;
+    // Return empty string when no custom override exists.
+    // The AI service (AISearchService.buildDailyNewsPrompt) already falls back
+    // to the hardcoded DAILY_NEWS_PROMPT when the DB has no value.
+    const promptTemplate = promptConfig?.value || '';
 
     const defaultLayout = layoutConfig?.value || 'masonry';
     const readflowServerUrl = readflowUrlConfig?.value || process.env.READFLOW_SERVER_URL || 'https://rsscloud.198909.xyz:37891/';
     const digestScheduleEnabled = scheduleEnabledConfig?.value === 'true';
     const digestScheduleTime = scheduleTimeConfig?.value || '08:30';
+
+    let promptCfg: PromptConfig = DEFAULT_PROMPT_CONFIG;
+    if (promptConfigDb?.value) {
+        try {
+            promptCfg = JSON.parse(promptConfigDb.value) as PromptConfig;
+        } catch (e) {
+            console.error('Failed to parse PROMPT_CONFIG from DB:', e);
+        }
+    }
 
     return {
         categoriesOrder,
@@ -48,7 +59,8 @@ export async function getSettings() {
         defaultLayout,
         readflowServerUrl,
         digestScheduleEnabled,
-        digestScheduleTime
+        digestScheduleTime,
+        promptCfg
     };
 }
 
@@ -58,7 +70,8 @@ export async function saveSettings(
     defaultLayout: string,
     readflowServerUrl: string,
     digestScheduleEnabled: boolean,
-    digestScheduleTime: string
+    digestScheduleTime: string,
+    promptCfg?: PromptConfig
 ) {
     try {
         const time = typeof digestScheduleTime === 'string' ? digestScheduleTime.trim() : '';
@@ -76,11 +89,21 @@ export async function saveSettings(
             update: { value: JSON.stringify(categoriesOrder) }
         });
 
-        await prisma.systemConfig.upsert({
-            where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
-            create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: promptTemplate },
-            update: { value: promptTemplate }
-        });
+        const trimmedPrompt = promptTemplate.trim();
+        if (trimmedPrompt === '') {
+            // If the prompt is completely empty or just spaces/newlines, delete the override so it falls back to the default
+            try {
+                await prisma.systemConfig.delete({ where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' } });
+            } catch (e) {
+                // Ignore error if it didn't exist
+            }
+        } else {
+            await prisma.systemConfig.upsert({
+                where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
+                create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: trimmedPrompt },
+                update: { value: trimmedPrompt }
+            });
+        }
 
         await prisma.systemConfig.upsert({
             where: { key: 'DEFAULT_LAYOUT' },
@@ -106,6 +129,21 @@ export async function saveSettings(
             update: { value: time }
         });
 
+        // Save prompt config if provided; also regenerate the prompt template from it
+        if (promptCfg) {
+            await prisma.systemConfig.upsert({
+                where: { key: 'PROMPT_CONFIG' },
+                create: { id: 'PROMPT_CONFIG', key: 'PROMPT_CONFIG', value: JSON.stringify(promptCfg) },
+                update: { value: JSON.stringify(promptCfg) }
+            });
+            const generatedPrompt = buildPromptFromConfig(promptCfg, '${date}');
+            await prisma.systemConfig.upsert({
+                where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
+                create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: generatedPrompt },
+                update: { value: generatedPrompt }
+            });
+        }
+
         revalidatePath('/');
         return { success: true };
     } catch (err: any) {
@@ -125,11 +163,20 @@ export async function updateSettings(partialSettings: { categoriesOrder?: string
         }
 
         if (partialSettings.promptTemplate !== undefined) {
-            await prisma.systemConfig.upsert({
-                where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
-                create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: partialSettings.promptTemplate },
-                update: { value: partialSettings.promptTemplate }
-            });
+            const trimmedPrompt = partialSettings.promptTemplate.trim();
+            if (trimmedPrompt === '') {
+                try {
+                    await prisma.systemConfig.delete({ where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' } });
+                } catch (e) {
+                    // Ignore error if it didn't exist
+                }
+            } else {
+                await prisma.systemConfig.upsert({
+                    where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
+                    create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: trimmedPrompt },
+                    update: { value: trimmedPrompt }
+                });
+            }
         }
 
         if (partialSettings.defaultLayout) {

@@ -16,8 +16,11 @@ export class DailyDigestEngine {
             return existing;
         }
 
-        const articles = await getCleanedArticles(dateStr, dateStr);
-        console.log(`[DailyDigestEngine] cleanedArticles date=${dateStr} count=${Array.isArray(articles) ? articles.length : 0}`);
+        const now = new Date();
+        const endIso = now.toISOString();
+        const startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        const articles = await getCleanedArticles(startIso, endIso);
+        console.log(`[DailyDigestEngine] cleanedArticles date=${dateStr} range=${startIso} to ${endIso} count=${Array.isArray(articles) ? articles.length : 0}`);
         const activeTrackers = await prisma.trackedEvent.findMany({
             where: { status: 'ACTIVE' },
             select: { id: true, name: true, searchQuery: true }

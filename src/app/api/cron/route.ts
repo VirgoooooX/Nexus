@@ -31,7 +31,12 @@ export async function GET(request: Request) {
         const scheduleEnabled = enabledConfig?.value === 'true';
         const scheduleTime = timeConfig?.value || '08:30';
 
-        if (scheduleEnabled && nowTime < scheduleTime) {
+        if (!scheduleEnabled) {
+            console.log(`[Cron API] skipped reason=schedule_disabled`);
+            return Response.json({ success: true, skipped: true, reason: 'schedule_disabled', today });
+        }
+
+        if (nowTime < scheduleTime) {
             console.log(`[Cron API] skipped reason=not_time_yet nowTime=${nowTime} scheduleTime=${scheduleTime}`);
             return Response.json({ success: true, skipped: true, reason: 'not_time_yet', nowTime, scheduleTime, today });
         }

@@ -18,7 +18,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="[scrollbar-gutter:stable]">
-      <body className={`${inter.variable} ${playfair.variable} font-sans min-h-screen bg-stone-50 antialiased`}>
+      <body className={`${inter.variable} ${playfair.variable} font-sans min-h-screen bg-stone-50 antialiased`} suppressHydrationWarning>
         <Navbar />
         <main className="pt-16">
           {children}

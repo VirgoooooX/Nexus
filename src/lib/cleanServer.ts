@@ -182,7 +182,7 @@ async function cleanGoogleNews(input: CleanRequest, deps: Deps): Promise<CleanRe
     return {
         url: canonicalUrl,
         title: String(input.title || '').trim(),
-        content: truncateText(stripHtmlToText(contentInput), 1500),
+        content: stripHtmlToText(contentInput),
         strategy: 'google_news',
         warnings: warnings.length ? warnings : undefined,
     };
@@ -237,7 +237,7 @@ export async function cleanOne(input: CleanRequest, deps: Deps = {}): Promise<Cl
     return {
         url: normalized.url,
         title,
-        content: truncateText(stripHtmlToText(fallbackInput), 1500),
+        content: stripHtmlToText(fallbackInput),
         strategy: 'generic_html_fallback',
     };
 }

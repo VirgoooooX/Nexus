@@ -70,7 +70,7 @@ export type ReadflowConfigSync = {
         [k: string]: unknown;
     };
     sources: Array<{ url: string; groupName: string }>;
-    groups?: Array<{ id?: string; name?: string; [k: string]: unknown }>;
+    groups?: Array<{ id?: string; name?: string;[k: string]: unknown }>;
     filterRules?: unknown[];
     updatedAt?: string;
     [k: string]: unknown;
@@ -265,7 +265,7 @@ export async function getCleanedArticles(start: string, end: string): Promise<Re
             ...a,
             url,
             title,
-            content: truncateText(stripHtmlToText(contentInput), 1500),
+            content: stripHtmlToText(contentInput),
         };
     });
 }
