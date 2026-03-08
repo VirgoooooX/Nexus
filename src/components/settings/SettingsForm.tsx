@@ -31,8 +31,6 @@ export function SettingsForm({
     initialPromptConfig,
 }: SettingsFormProps) {
     const [categories, setCategories] = useState(initialCategories);
-    const [layout, setLayout] = useState(initialLayout);
-    const [readflowServerUrl, setReadflowServerUrl] = useState(initialReadflowServerUrl);
     const [digestScheduleEnabled, setDigestScheduleEnabled] = useState(initialDigestScheduleEnabled);
     const [digestScheduleTime, setDigestScheduleTime] = useState(initialDigestScheduleTime);
 
@@ -58,8 +56,8 @@ export function SettingsForm({
             const result = await saveSettings(
                 categories,
                 initialPrompt,
-                layout,
-                readflowServerUrl,
+                initialLayout, // Keep initial layout, don't change from here
+                initialReadflowServerUrl, // Keep initial server URL, don't change from here
                 digestScheduleEnabled,
                 digestScheduleTime,
                 initialPromptConfig
@@ -92,32 +90,6 @@ export function SettingsForm({
                 </div>
             )}
 
-            {/* ═══════════ 首页排版 ═══════════ */}
-            <section className="space-y-3">
-                <h2 className="font-serif text-lg font-bold text-stone-900">首页排版</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {VIEW_OPTIONS.map(view => (
-                        <button
-                            key={view.id}
-                            type="button"
-                            onClick={() => setLayout(view.id)}
-                            className={`text-left px-5 py-4 rounded-lg border transition-all ${layout === view.id
-                                ? 'border-stone-900 bg-white shadow-sm ring-1 ring-stone-900'
-                                : 'border-stone-200 bg-white hover:border-stone-300'
-                                }`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`w-2 h-2 rounded-full ${layout === view.id ? 'bg-stone-900' : 'bg-stone-200'}`} />
-                                <div>
-                                    <div className="font-bold text-stone-900">{view.label}</div>
-                                    <div className="text-xs text-stone-500 mt-0.5">{view.desc}</div>
-                                </div>
-                            </div>
-                        </button>
-                    ))}
-                </div>
-            </section>
-
             {/* ═══════════ 板块排序 ═══════════ */}
             <section className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -141,21 +113,6 @@ export function SettingsForm({
                             </div>
                         </div>
                     ))}
-                </div>
-            </section>
-
-            {/* ═══════════ Readflow 数据源 ═══════════ */}
-            <section className="space-y-3">
-                <h2 className="font-serif text-lg font-bold text-stone-900">Readflow 数据源</h2>
-                <div className="border border-stone-200 rounded-lg bg-white p-5">
-                    <label className="block text-xs font-medium text-stone-500 mb-1.5">Server URL</label>
-                    <input
-                        value={readflowServerUrl}
-                        onChange={(e) => setReadflowServerUrl(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-stone-200 rounded-lg bg-white text-sm text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-stone-300 focus:border-transparent placeholder:text-stone-400"
-                        placeholder="https://rsscloud.example.com/"
-                    />
-                    <p className="text-xs text-stone-400 mt-2">详细的订阅与分组管理请切换至「Readflow 数据源」标签页。</p>
                 </div>
             </section>
 

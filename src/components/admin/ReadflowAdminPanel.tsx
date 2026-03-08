@@ -26,6 +26,9 @@ export function ReadflowAdminPanel({ readflowServerUrl }: { readflowServerUrl: s
   const [search, setSearch] = useState('');
   const [newGroupName, setNewGroupName] = useState('');
   const [activeTab, setActiveTab] = useState<'sources' | 'groups'>('sources');
+  const [editableServerUrl, setEditableServerUrl] = useState(readflowServerUrl);
+  const [isUrlDirty, setIsUrlDirty] = useState(false);
+  const [isSavingUrl, setIsSavingUrl] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +199,27 @@ export function ReadflowAdminPanel({ readflowServerUrl }: { readflowServerUrl: s
     }
   }
 
+  async function onSaveUrl() {
+    if (!editableServerUrl.trim()) return;
+    setIsSavingUrl(true);
+    try {
+      const { updateSettings } = await import('@/app/actions/settingsActions');
+      const res = await updateSettings({ readflowServerUrl: editableServerUrl.trim() });
+      if (res.success) {
+        setIsUrlDirty(false);
+        setStatus('success');
+        setTimeout(() => setStatus('idle'), 2500);
+      } else {
+        throw new Error('URL 保存失败');
+      }
+    } catch (e: unknown) {
+      setStatus('error');
+      setError(String(e));
+    } finally {
+      setIsSavingUrl(false);
+    }
+  }
+
   return (
     <div className="space-y-8 pb-24">
 
@@ -205,9 +229,28 @@ export function ReadflowAdminPanel({ readflowServerUrl }: { readflowServerUrl: s
           <div className="w-10 h-10 bg-stone-900 rounded-lg flex items-center justify-center">
             <Rss className="w-5 h-5 text-white" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="font-serif text-2xl font-bold text-stone-900 tracking-tight">Readflow 数据源</h1>
-            <p className="text-xs text-stone-400 font-mono mt-0.5 truncate max-w-xs">{readflowServerUrl}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                value={editableServerUrl}
+                onChange={(e) => {
+                  setEditableServerUrl(e.target.value);
+                  setIsUrlDirty(true);
+                }}
+                className="text-xs text-stone-600 font-mono bg-stone-100 border border-stone-200 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-stone-300 w-full max-w-sm"
+                placeholder="Server URL..."
+              />
+              {isUrlDirty && (
+                <button
+                  onClick={onSaveUrl}
+                  disabled={isSavingUrl}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 whitespace-nowrap"
+                >
+                  {isSavingUrl ? '保存中...' : '保存 URL'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">

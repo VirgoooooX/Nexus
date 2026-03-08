@@ -152,7 +152,12 @@ export async function saveSettings(
     }
 }
 
-export async function updateSettings(partialSettings: { categoriesOrder?: string[], promptTemplate?: string, defaultLayout?: string }) {
+export async function updateSettings(partialSettings: {
+    categoriesOrder?: string[],
+    promptTemplate?: string,
+    defaultLayout?: string,
+    readflowServerUrl?: string
+}) {
     try {
         if (partialSettings.categoriesOrder) {
             await prisma.systemConfig.upsert({
@@ -184,6 +189,14 @@ export async function updateSettings(partialSettings: { categoriesOrder?: string
                 where: { key: 'DEFAULT_LAYOUT' },
                 create: { id: 'DEFAULT_LAYOUT', key: 'DEFAULT_LAYOUT', value: partialSettings.defaultLayout },
                 update: { value: partialSettings.defaultLayout }
+            });
+        }
+
+        if (partialSettings.readflowServerUrl) {
+            await prisma.systemConfig.upsert({
+                where: { key: 'READFLOW_SERVER_URL' },
+                create: { id: 'READFLOW_SERVER_URL', key: 'READFLOW_SERVER_URL', value: partialSettings.readflowServerUrl },
+                update: { value: partialSettings.readflowServerUrl }
             });
         }
 

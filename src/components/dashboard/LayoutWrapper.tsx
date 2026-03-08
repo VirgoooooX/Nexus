@@ -321,15 +321,15 @@ export default function LayoutWrapper({
         <div className="min-h-screen bg-stone-50 dark:bg-stone-950 transition-colors duration-500 relative">
 
             {/* Main Content Area */}
-            <main className={`transition-opacity duration-500 ease-in-out`}>
+            <main>
                 {activeView === 'masonry' && (
-                    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
                         <MasonryView data={mockDataFormat} />
                     </div>
                 )}
 
                 {activeView === 'classic' && (
-                    <div className="max-w-4xl mx-auto px-5 sm:px-8 py-8 sm:py-12 animate-in fade-in duration-700 font-sans tracking-tight">
+                    <div className="max-w-4xl mx-auto px-5 sm:px-8 py-8 sm:py-12 font-sans tracking-tight">
                         {/* Original Classic View Content extracted from old page.tsx */}
                         <header className="relative pb-6 border-b border-stone-300 dark:border-stone-800 mb-8 sm:mb-12">
                             <div className="flex items-center gap-4 mb-3">
@@ -438,16 +438,16 @@ export default function LayoutWrapper({
                                                             const el = document.getElementById(`digest-cat-${idx}`);
                                                             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                                                         }}
-                                                        className={`group inline-flex items-center gap-3 rounded-xl px-2 py-1.5 transition-colors ${activeSection === idx ? 'bg-white/70 dark:bg-stone-900/45' : 'hover:bg-white/60 dark:hover:bg-stone-900/35'}`}
+                                                        className={`group relative inline-flex items-center gap-3 px-3 py-2.5 transition-all w-full text-left overflow-hidden ${activeSection === idx ? 'bg-white dark:bg-stone-900 border-y border-r border-stone-200 dark:border-stone-800 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] dark:shadow-none rounded-r-xl' : 'hover:bg-stone-100/50 dark:hover:bg-stone-900/30 rounded-xl'}`}
                                                     >
-                                                        <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
-                                                            <div className={`transition-all duration-500 rounded-full ${activeSection === idx ? 'w-3 h-3 bg-blue-600 dark:bg-blue-400' : 'w-1.5 h-1.5 bg-stone-300 dark:bg-stone-600 group-hover:bg-stone-500 dark:group-hover:bg-stone-400 group-hover:scale-150'}`} />
-                                                            {activeSection === idx && (
-                                                                <div className="absolute w-8 h-8 border border-blue-600/30 dark:border-blue-400/30 rounded-full animate-[ping_2.5s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                                                            )}
+                                                        {activeSection === idx && (
+                                                            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-600 dark:bg-blue-400 rounded-r-full" />
+                                                        )}
+                                                        <div className="relative w-7 h-7 flex items-center justify-center shrink-0">
+                                                            <div className={`transition-all duration-300 rounded-full ${activeSection === idx ? 'w-2 h-2 bg-blue-600 dark:bg-blue-400 ring-4 ring-blue-100 dark:ring-blue-900/30' : 'w-1.5 h-1.5 bg-stone-300 dark:bg-stone-600 group-hover:w-2 group-hover:h-2 group-hover:bg-stone-400 dark:group-hover:bg-stone-500'}`} />
                                                         </div>
-                                                        <div className={`min-w-0 max-w-[260px] rounded-lg px-3 py-2 transition-all duration-300 ${activeSection === idx ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900 shadow-lg' : 'text-stone-700 dark:text-stone-300'}`}>
-                                                            <div className={`truncate ${activeSection === idx ? 'text-[13px] font-black tracking-widest uppercase' : 'text-[12px] font-bold tracking-widest uppercase'}`}>
+                                                        <div className={`min-w-0 max-w-[260px] pr-2 transition-all duration-300 ${activeSection === idx ? 'translate-x-1' : ''}`}>
+                                                            <div className={`truncate ${activeSection === idx ? 'text-base font-black tracking-widest uppercase bg-gradient-to-r from-blue-700 to-cyan-600 dark:from-blue-400 dark:to-cyan-300 bg-clip-text text-transparent' : 'text-sm font-bold tracking-widest uppercase text-stone-500 dark:text-stone-400 group-hover:text-stone-800 dark:group-hover:text-stone-300'}`}>
                                                                 {cat.name}
                                                             </div>
                                                         </div>

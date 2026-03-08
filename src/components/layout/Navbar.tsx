@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { LayoutTemplate, Check } from "lucide-react";
 import { updateSettings, getSettings } from '@/app/actions/settingsActions';
 
@@ -14,10 +15,23 @@ export function Navbar() {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [activeLayout, setActiveLayout] = useState('classic');
     const [isVisible, setIsVisible] = useState(true);
+    const [isNavigating, setIsNavigating] = useState(false); // Used to temporarily disable transitions
     const dropdownRef = useRef<HTMLDivElement>(null);
     const lastScrollY = useRef(0);
+    const pathname = usePathname();
+
+    // Reset visibility immediately when route changes
+    useEffect(() => {
+        setIsVisible(true);
+        setIsNavigating(true);
+        const timer = setTimeout(() => setIsNavigating(false), 50);
+        return () => clearTimeout(timer);
+    }, [pathname]);
 
     useEffect(() => {
+        // Init scroll Y to avoid instantly hiding if loaded halfway down a page
+        lastScrollY.current = window.scrollY;
+
         // Load initial setting
         getSettings().then(settings => {
             if (settings && settings.defaultLayout) {
@@ -61,7 +75,7 @@ export function Navbar() {
 
     return (
         <nav
-            className={`fixed top-0 left-0 right-0 z-[100] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] bg-white/80 dark:bg-stone-950/80 backdrop-blur-xl border-b border-stone-200/50 dark:border-stone-800/50 ${isVisible ? 'translate-y-0' : '-translate-y-full'}`}
+            className={`fixed top-0 left-0 right-0 z-[100] bg-white/80 dark:bg-stone-950/80 backdrop-blur-xl border-b border-stone-200/50 dark:border-stone-800/50 ${!isNavigating ? 'transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]' : ''} ${isVisible ? 'translate-y-0' : '-translate-y-full'}`}
         >
             <div className="w-full flex h-16 items-center justify-between px-6 md:px-12 lg:px-16">
                 <Link href="/" className="font-sans font-black text-xl tracking-tighter text-stone-900 dark:text-white flex items-center gap-2">
