@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import type { PromptConfig, CategoryDef, ItemField, CitationField, Constraint } from '@/lib/promptConfig';
+import type { PromptConfig, CategoryDef, ItemField, CitationField, Constraint, EditorialPrinciple, CategoryRules } from '@/lib/promptConfig';
+import { normalizePromptConfig } from '@/lib/promptConfig';
 import { buildPromptFromConfig } from '@/lib/buildPromptFromConfig';
 import {
     ChevronDown, ChevronRight, Plus, Trash2, GripVertical, ToggleLeft, ToggleRight,
@@ -70,6 +71,87 @@ function StringListEditor({ items, onChange, placeholder }: {
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-900 px-3 py-1.5 rounded-lg hover:bg-stone-100 transition-colors">
                 <Plus className="w-3 h-3" /> 添加
             </button>
+        </div>
+    );
+}
+
+// ─── Editorial Principles Editor (P1/P2/P3 structured) ───
+function PrincipleEditor({ principles, onChange }: {
+    principles: EditorialPrinciple[];
+    onChange: (p: EditorialPrinciple[]) => void;
+}) {
+    const update = (i: number, field: keyof EditorialPrinciple, val: string) => {
+        const next = [...principles];
+        next[i] = { ...next[i], [field]: val };
+        onChange(next);
+    };
+    const remove = (i: number) => onChange(principles.filter((_, idx) => idx !== i));
+    const add = () => onChange([...principles, { id: `P${principles.length + 1}`, title: '', subtitle: '', body: '' }]);
+
+    return (
+        <div className="space-y-3">
+            {principles.map((p, i) => (
+                <div key={i} className="border border-stone-200 rounded-lg p-4 space-y-2 group hover:border-stone-300 transition-colors">
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{p.id}</span>
+                        <input
+                            value={p.title}
+                            onChange={(e) => update(i, 'title', e.target.value)}
+                            className="flex-1 text-sm font-bold text-stone-900 bg-transparent focus:outline-none"
+                            placeholder="原则标题（如：编辑立场）"
+                        />
+                        <span className="text-stone-300">—</span>
+                        <input
+                            value={p.subtitle}
+                            onChange={(e) => update(i, 'subtitle', e.target.value)}
+                            className="flex-1 text-sm text-stone-500 bg-transparent focus:outline-none"
+                            placeholder="副标题（如：高密度归纳，零信息遗漏）"
+                        />
+                        <button type="button" onClick={() => remove(i)}
+                            className="text-stone-300 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
+                    <textarea
+                        value={p.body}
+                        onChange={(e) => update(i, 'body', e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-stone-100 rounded-lg text-sm text-stone-700 bg-stone-50 focus:outline-none focus:ring-1 focus:ring-stone-300 resize-y leading-relaxed"
+                        placeholder="详细说明..."
+                    />
+                </div>
+            ))}
+            <button type="button" onClick={add}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-900 px-3 py-1.5 rounded-lg hover:bg-stone-100 transition-colors">
+                <Plus className="w-3 h-3" /> 添加原则
+            </button>
+        </div>
+    );
+}
+
+// ─── Category Rules Editor (structured) ───
+function CategoryRulesEditor({ rules, onChange }: {
+    rules: CategoryRules;
+    onChange: (rules: CategoryRules) => void;
+}) {
+    return (
+        <div className="space-y-5">
+            <div>
+                <div className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">主题拆分策略</div>
+                <StringListEditor
+                    items={rules.splitStrategy}
+                    onChange={(v) => onChange({ ...rules, splitStrategy: v })}
+                    placeholder="拆分策略规则..."
+                />
+            </div>
+            <div>
+                <div className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">结论输出规则</div>
+                <StringListEditor
+                    items={rules.outputRules}
+                    onChange={(v) => onChange({ ...rules, outputRules: v })}
+                    placeholder="输出规则..."
+                />
+            </div>
         </div>
     );
 }
@@ -191,7 +273,16 @@ function FieldEditor({ fields, onChange, label }: {
     );
 }
 
-// ─── Constraints Editor ───
+// ─── Constraints Editor (domain-grouped) ───
+const DOMAIN_LABELS: Record<string, string> = {
+    source: '🔒 来源约束',
+    format: '📐 格式约束',
+    bullet: '🔗 Bullet 从属性约束',
+    coverage: '📊 覆盖约束',
+    dedup: '🧹 去重约束',
+};
+const DOMAIN_ORDER = ['source', 'format', 'bullet', 'coverage', 'dedup'];
+
 function ConstraintEditor({ constraints, onChange }: {
     constraints: Constraint[];
     onChange: (c: Constraint[]) => void;
@@ -207,35 +298,87 @@ function ConstraintEditor({ constraints, onChange }: {
         onChange(next);
     };
     const remove = (i: number) => onChange(constraints.filter((_, idx) => idx !== i));
-    const add = () => onChange([...constraints, { text: '', enabled: true }]);
+    const addToDomain = (domain: string) => {
+        const domainConstraints = constraints.filter(c => c.domain === domain);
+        const nextNum = domainConstraints.length + 1;
+        const prefix = domain === 'source' ? 'S' : domain === 'format' ? 'F' : domain === 'bullet' ? 'B' : domain === 'coverage' ? 'C' : 'D';
+        onChange([...constraints, { text: '', enabled: true, domain: domain as Constraint['domain'], code: `${prefix}${nextNum}` }]);
+    };
+
+    // Group by domain
+    const hasDomains = constraints.length > 0 && 'domain' in constraints[0];
+
+    if (!hasDomains) {
+        // Legacy flat mode
+        return (
+            <div className="space-y-2">
+                {constraints.map((c, i) => (
+                    <div key={i} className={`flex items-start gap-3 group px-3 py-2.5 border rounded-lg transition-colors ${c.enabled ? 'border-stone-200 bg-white' : 'border-stone-100 bg-stone-50 opacity-60'}`}>
+                        <button type="button" onClick={() => toggle(i)} className="mt-1 shrink-0">
+                            {c.enabled
+                                ? <ToggleRight className="w-5 h-5 text-stone-900" />
+                                : <ToggleLeft className="w-5 h-5 text-stone-300" />
+                            }
+                        </button>
+                        <textarea
+                            value={c.text}
+                            onChange={(e) => update(i, e.target.value)}
+                            rows={2}
+                            className="flex-1 text-sm text-stone-800 bg-transparent focus:outline-none resize-y leading-relaxed"
+                            placeholder="约束规则内容"
+                        />
+                        <button type="button" onClick={() => remove(i)}
+                            className="mt-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-2">
-            {constraints.map((c, i) => (
-                <div key={i} className={`flex items-start gap-3 group px-3 py-2.5 border rounded-lg transition-colors ${c.enabled ? 'border-stone-200 bg-white' : 'border-stone-100 bg-stone-50 opacity-60'}`}>
-                    <button type="button" onClick={() => toggle(i)} className="mt-1 shrink-0">
-                        {c.enabled
-                            ? <ToggleRight className="w-5 h-5 text-stone-900" />
-                            : <ToggleLeft className="w-5 h-5 text-stone-300" />
-                        }
-                    </button>
-                    <textarea
-                        value={c.text}
-                        onChange={(e) => update(i, e.target.value)}
-                        rows={2}
-                        className="flex-1 text-sm text-stone-800 bg-transparent focus:outline-none resize-y leading-relaxed"
-                        placeholder="约束规则内容"
-                    />
-                    <button type="button" onClick={() => remove(i)}
-                        className="mt-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                </div>
-            ))}
-            <button type="button" onClick={add}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-900 px-3 py-1.5 rounded-lg hover:bg-stone-100 transition-colors">
-                <Plus className="w-3 h-3" /> 添加约束
-            </button>
+        <div className="space-y-5">
+            {DOMAIN_ORDER.map(domain => {
+                const domainConstraints = constraints
+                    .map((c, originalIdx) => ({ ...c, originalIdx }))
+                    .filter(c => c.domain === domain);
+                if (domainConstraints.length === 0 && domain !== 'source') return null;
+
+                return (
+                    <div key={domain}>
+                        <div className="text-xs font-bold text-stone-600 mb-2">{DOMAIN_LABELS[domain] || domain}</div>
+                        <div className="space-y-2">
+                            {domainConstraints.map((c) => (
+                                <div key={c.originalIdx} className={`flex items-start gap-3 group px-3 py-2.5 border rounded-lg transition-colors ${c.enabled ? 'border-stone-200 bg-white' : 'border-stone-100 bg-stone-50 opacity-60'}`}>
+                                    <button type="button" onClick={() => toggle(c.originalIdx)} className="mt-1 shrink-0">
+                                        {c.enabled
+                                            ? <ToggleRight className="w-5 h-5 text-stone-900" />
+                                            : <ToggleLeft className="w-5 h-5 text-stone-300" />
+                                        }
+                                    </button>
+                                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1.5 shrink-0">{c.code}</span>
+                                    <textarea
+                                        value={c.text}
+                                        onChange={(e) => update(c.originalIdx, e.target.value)}
+                                        rows={2}
+                                        className="flex-1 text-sm text-stone-800 bg-transparent focus:outline-none resize-y leading-relaxed"
+                                        placeholder="约束规则内容"
+                                    />
+                                    <button type="button" onClick={() => remove(c.originalIdx)}
+                                        className="mt-1 text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            ))}
+                            <button type="button" onClick={() => addToDomain(domain)}
+                                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-900 px-3 py-1.5 rounded-lg hover:bg-stone-100 transition-colors">
+                                <Plus className="w-3 h-3" /> 添加
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -278,41 +421,43 @@ function ParamsEditor({ params, onChange }: {
     );
 }
 
+
+
+
 // ═══════════ Main Component ═══════════
 export function PromptConfigEditor({ config, onChange }: PromptConfigEditorProps) {
     const [showPreview, setShowPreview] = useState(false);
 
+    // Normalize legacy formats from DB
+    const normalizedConfig = normalizePromptConfig(config);
+
     const patch = <K extends keyof PromptConfig>(key: K, value: PromptConfig[K]) => {
-        onChange({ ...config, [key]: value });
+        onChange({ ...normalizedConfig, [key]: value });
     };
 
-    const previewText = buildPromptFromConfig(config, '2025-01-01');
+    const previewText = buildPromptFromConfig(normalizedConfig, '2025-01-01');
 
     return (
         <div className="space-y-3">
-            {/* 7 Configurable Panels */}
-            <Section title="编辑方针 · 核心原则" icon={FileText} defaultOpen>
-                <StringListEditor
-                    items={config.editorialPrinciples}
+            {/* Panel 1: Editorial Principles (structured P1/P2/P3) */}
+            <Section title="核心原则 · P1/P2/P3" icon={FileText} defaultOpen>
+                <PrincipleEditor
+                    principles={normalizedConfig.editorialPrinciples}
                     onChange={(v) => patch('editorialPrinciples', v)}
-                    placeholder="编辑方针原则..."
                 />
             </Section>
 
             <Section title="分类定义" icon={Tag}>
                 <CategoryEditor
-                    categories={config.categories}
+                    categories={normalizedConfig.categories}
                     onChange={(v) => patch('categories', v)}
                 />
             </Section>
 
             <Section title="分类规则" icon={ListChecks}>
-                <textarea
-                    value={config.categoryRules}
-                    onChange={(e) => patch('categoryRules', e.target.value)}
-                    rows={4}
-                    className="w-full px-4 py-3 border border-stone-200 rounded-lg text-sm text-stone-800 bg-white focus:outline-none focus:ring-2 focus:ring-stone-300 resize-y leading-relaxed"
-                    placeholder="分类组织规则..."
+                <CategoryRulesEditor
+                    rules={normalizedConfig.categoryRules}
+                    onChange={(v) => patch('categoryRules', v)}
                 />
             </Section>
 
@@ -320,12 +465,12 @@ export function PromptConfigEditor({ config, onChange }: PromptConfigEditorProps
                 <div className="space-y-6">
                     <FieldEditor
                         label="Item 字段（每条新闻的结构）"
-                        fields={config.itemFields}
+                        fields={normalizedConfig.itemFields}
                         onChange={(v) => patch('itemFields', v as ItemField[])}
                     />
                     <FieldEditor
                         label="Citation 字段（引用来源结构）"
-                        fields={config.citationFields}
+                        fields={normalizedConfig.citationFields}
                         onChange={(v) => patch('citationFields', v as CitationField[])}
                     />
                 </div>
@@ -333,22 +478,22 @@ export function PromptConfigEditor({ config, onChange }: PromptConfigEditorProps
 
             <Section title="追踪规则" icon={Radio}>
                 <StringListEditor
-                    items={config.trackingRules}
+                    items={normalizedConfig.trackingRules}
                     onChange={(v) => patch('trackingRules', v)}
                     placeholder="追踪规则..."
                 />
             </Section>
 
-            <Section title="强制约束" icon={ShieldCheck}>
+            <Section title="强制约束 · 5域分组" icon={ShieldCheck}>
                 <ConstraintEditor
-                    constraints={config.constraints}
+                    constraints={normalizedConfig.constraints}
                     onChange={(v) => patch('constraints', v)}
                 />
             </Section>
 
             <Section title="输出参数" icon={SlidersHorizontal} defaultOpen>
                 <ParamsEditor
-                    params={config.params}
+                    params={normalizedConfig.params}
                     onChange={(v) => patch('params', v)}
                 />
             </Section>

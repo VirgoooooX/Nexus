@@ -3,6 +3,7 @@ import { Citation, IAIProvider, DailyNewsResult, EventUpdateResult, SynthesisRes
 import { DAILY_NEWS_PROMPT, EVENT_UPDATE_PROMPT, SYNTHESIS_PROMPT } from './prompts';
 import { parseJsonLenient } from './safeJsonParsing';
 import { normalizeCoveredUrls } from './coverage';
+import { syslog } from '@/lib/SystemLogger';
 
 export class AISearchService implements IAIProvider {
     private _client: OpenAI | null = null;
@@ -33,7 +34,7 @@ export class AISearchService implements IAIProvider {
         if (m.includes('gemini-3') && m.includes('pro')) {
             return { input: 1_048_576, output: 65_536 };
         }
-        if (m.includes('gemini')) {
+        if (m.includes('gemini') || m.includes('flash') || m.includes('mimo')) {
             return { input: 1_048_576, output: 65_536 };
         }
         if (m.includes('gpt-4o')) {
@@ -110,12 +111,26 @@ export class AISearchService implements IAIProvider {
     }
 
     private async chat(prompt: string): Promise<string> {
+        const startTime = Date.now();
+        syslog.info('digest', `调用 AI 模型 ${this.model}`, { promptLen: prompt.length, estimatedTokens: this.estimateTokensForText(prompt) });
+        const limits = this.getModelTokenLimits();
         const response = await this.client.chat.completions.create({
             model: this.model,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.3,
+            max_tokens: limits.output,
         });
-        return response.choices[0]?.message?.content || '';
+        const content = response.choices[0]?.message?.content || '';
+        const elapsed = Date.now() - startTime;
+        const usage = response.usage;
+        syslog.info('digest', `AI 响应完成`, {
+            elapsed: `${elapsed}ms`,
+            responseLen: content.length,
+            promptTokens: usage?.prompt_tokens,
+            completionTokens: usage?.completion_tokens,
+            totalTokens: usage?.total_tokens,
+        });
+        return content;
     }
 
     private parseJSON<T>(raw: string): T {
@@ -394,13 +409,18 @@ export class AISearchService implements IAIProvider {
         const allowedEventIds = new Set(activeTrackers.map((t) => t.eventId));
         const eventNameById = new Map(activeTrackers.map((t) => [t.eventId, t.eventName]));
         try {
-            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
+            const result = this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
+            syslog.info('digest', `JSON 解析成功`, { categories: result.categories?.length || 0, items: result.categories?.reduce((sum, c) => sum + (c.themes?.reduce((s, t) => s + t.items.length, 0) || 0), 0) || 0 });
+            return result;
         } catch (e: unknown) {
+            syslog.warn('digest', `首次 JSON 解析失败，重试中...`, { error: String(e) });
             const retryPrompt =
                 promptText +
                 '\n\n你上一次输出无法解析为 JSON。请严格只输出合法 JSON（必须以 { 开头，以 } 结尾），不要包含任何解释文本、不要 markdown 代码块。';
             const raw2 = await this.chat(retryPrompt);
-            return this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw2), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
+            const result = this.normalizeDailyNewsResult(this.parseJSON<DailyNewsResult>(raw2), allowedUrlToSource, allowedUrlToTitle, allowedUrlToPublishedAt, allowedEventIds, eventNameById);
+            syslog.info('digest', `重试 JSON 解析成功`, { categories: result.categories?.length || 0 });
+            return result;
         }
     }
 

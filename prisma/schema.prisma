@@ -61,3 +61,15 @@ model PushLog {
   error     String?
   createdAt DateTime @default(now())
 }
+
+// ─── 系统日志 ──────────────────────────────────────
+model SystemLog {
+  id        String   @id @default(uuid())
+  level     String   // "info" | "warn" | "error"
+  source    String   // "digest" | "orchestrator" | "push" | "cron" | "settings" | "system"
+  message   String
+  meta      String?  // JSON 附加信息
+  createdAt DateTime @default(now())
+
+  @@index([source, createdAt])
+}

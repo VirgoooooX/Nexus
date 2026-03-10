@@ -2,8 +2,9 @@
 
 import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
-import { DEFAULT_PROMPT_CONFIG, type PromptConfig } from '@/lib/promptConfig';
+import { DEFAULT_PROMPT_CONFIG, normalizePromptConfig, type PromptConfig } from '@/lib/promptConfig';
 import { buildPromptFromConfig } from '@/lib/buildPromptFromConfig';
+import { syslog } from '@/lib/SystemLogger';
 
 // Default category order
 const DEFAULT_CATEGORIES = ['时政要闻', '前沿科技', '人工智能', '智能硬件', '商业财经', '社会民生', '娱乐文化', '电子游戏', '体育赛事'];
@@ -47,7 +48,7 @@ export async function getSettings() {
     let promptCfg: PromptConfig = DEFAULT_PROMPT_CONFIG;
     if (promptConfigDb?.value) {
         try {
-            promptCfg = JSON.parse(promptConfigDb.value) as PromptConfig;
+            promptCfg = normalizePromptConfig(JSON.parse(promptConfigDb.value) as PromptConfig);
         } catch (e) {
             console.error('Failed to parse PROMPT_CONFIG from DB:', e);
         }
@@ -131,23 +132,33 @@ export async function saveSettings(
 
         // Save prompt config if provided; also regenerate the prompt template from it
         if (promptCfg) {
-            await prisma.systemConfig.upsert({
-                where: { key: 'PROMPT_CONFIG' },
-                create: { id: 'PROMPT_CONFIG', key: 'PROMPT_CONFIG', value: JSON.stringify(promptCfg) },
-                update: { value: JSON.stringify(promptCfg) }
-            });
-            const generatedPrompt = buildPromptFromConfig(promptCfg, '${date}');
-            await prisma.systemConfig.upsert({
-                where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
-                create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: generatedPrompt },
-                update: { value: generatedPrompt }
-            });
+            const isConfigEmpty = promptCfg.editorialPrinciples.length === 0 && promptCfg.constraints.length === 0 && promptCfg.itemFields.length === 0;
+            if (isConfigEmpty) {
+                try {
+                    await prisma.systemConfig.delete({ where: { key: 'PROMPT_CONFIG' } });
+                } catch (e) {
+                    // Ignore error if it didn't exist
+                }
+            } else {
+                await prisma.systemConfig.upsert({
+                    where: { key: 'PROMPT_CONFIG' },
+                    create: { id: 'PROMPT_CONFIG', key: 'PROMPT_CONFIG', value: JSON.stringify(promptCfg) },
+                    update: { value: JSON.stringify(promptCfg) }
+                });
+                const generatedPrompt = buildPromptFromConfig(promptCfg, '${date}');
+                await prisma.systemConfig.upsert({
+                    where: { key: 'DAILY_NEWS_PROMPT_TEMPLATE' },
+                    create: { id: 'DAILY_NEWS_PROMPT_TEMPLATE', key: 'DAILY_NEWS_PROMPT_TEMPLATE', value: generatedPrompt },
+                    update: { value: generatedPrompt }
+                });
+            }
         }
 
         revalidatePath('/');
+        syslog.info('settings', '系统配置已保存', { promptCfgUpdated: !!promptCfg, scheduleEnabled: digestScheduleEnabled, scheduleTime: digestScheduleTime });
         return { success: true };
     } catch (err: any) {
-        console.error('[saveSettings] Failed to save settings:', err);
+        syslog.error('settings', `配置保存失败: ${String(err)}`, { error: String(err) });
         return { success: false, error: String(err) };
     }
 }

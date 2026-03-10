@@ -9,8 +9,8 @@ function looksLikeDate(s: string) {
     return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-export default async function DigestByDatePage({ params }: { params: { date: string } }) {
-    const { date } = params;
+export default async function DigestByDatePage({ params }: { params: Promise<{ date: string }> }) {
+    const { date } = await params;
     if (!looksLikeDate(date)) {
         return (
             <div className="max-w-4xl mx-auto px-6 sm:px-10 py-10 sm:py-14">

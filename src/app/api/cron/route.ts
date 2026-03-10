@@ -2,6 +2,7 @@ import { orchestrator } from '@/services/engine/OrchestratorService';
 import { pushManager } from '@/services/push/PushManager';
 import { prisma } from '@/lib/db';
 import { formatDateInTimeZone, formatTimeInTimeZone } from '@/lib/utils';
+import { syslog } from '@/lib/SystemLogger';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,11 +10,11 @@ export async function GET(request: Request) {
     // 验证 CRON_SECRET
     const { searchParams } = new URL(request.url);
     const secret = searchParams.get('secret');
-    console.log(`[Cron API] hit url=${request.url}`);
+    syslog.info('cron', `定时任务触发`);
 
     // 必须配置 CRON_SECRET 并在触发时带上，防止接口被恶意调用
     if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-        console.log(`[Cron API] unauthorized configured=${Boolean(process.env.CRON_SECRET)} secretMatch=${secret === process.env.CRON_SECRET}`);
+        syslog.warn('cron', '定时任务鉴权失败');
         return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
         const timeZone = 'Asia/Shanghai';
         const nowTime = formatTimeInTimeZone(timeZone);
         const today = formatDateInTimeZone(timeZone);
-        console.log(`[Cron API] start today=${today} nowTime=${nowTime}`);
+        syslog.info('cron', `当前时间 ${nowTime}，日期 ${today}`);
 
         const [enabledConfig, timeConfig] = await Promise.all([
             prisma.systemConfig.findUnique({ where: { key: 'DAILY_DIGEST_SCHEDULE_ENABLED' } }),
@@ -32,33 +33,33 @@ export async function GET(request: Request) {
         const scheduleTime = timeConfig?.value || '08:30';
 
         if (!scheduleEnabled) {
-            console.log(`[Cron API] skipped reason=schedule_disabled`);
+            syslog.info('cron', '定时生成未启用，跳过');
             return Response.json({ success: true, skipped: true, reason: 'schedule_disabled', today });
         }
 
         if (nowTime < scheduleTime) {
-            console.log(`[Cron API] skipped reason=not_time_yet nowTime=${nowTime} scheduleTime=${scheduleTime}`);
+            syslog.info('cron', `未到计划时间，跳过`, { nowTime, scheduleTime });
             return Response.json({ success: true, skipped: true, reason: 'not_time_yet', nowTime, scheduleTime, today });
         }
 
         const existing = await prisma.dailyDigest.findUnique({ where: { date: today }, select: { id: true } });
         if (existing) {
-            console.log(`[Cron API] skipped reason=already_generated today=${today} digestId=${existing.id}`);
+            syslog.info('cron', `今日日报已存在，跳过`, { digestId: existing.id });
             return Response.json({ success: true, skipped: true, reason: 'already_generated', today });
         }
 
         // 1. 执行编排（搜新闻、搜事件更新、落库）
-        console.log(`[Cron API] runDaily start today=${today}`);
+        syslog.info('cron', `开始执行每日编排任务`);
         const result = await orchestrator.runDaily();
-        console.log(`[Cron API] runDaily done today=${today} digestId=${(result as any)?.digest?.id || ''}`);
+        syslog.info('cron', `编排完成`, { digestId: (result as any)?.digest?.id || '' });
 
         // 2. 推送图文/Markdown报告
         await pushManager.pushDailyReport(result);
-        console.log(`[Cron API] pushDailyReport done today=${today}`);
+        syslog.info('cron', `推送流程完成`);
 
         return Response.json({ success: true, ...result });
     } catch (err: any) {
-        console.error('[Cron API] Fatal error:', err);
+        syslog.error('cron', `定时任务执行失败: ${String(err)}`, { error: String(err) });
         return Response.json({ success: false, error: String(err) }, { status: 500 });
     }
 }

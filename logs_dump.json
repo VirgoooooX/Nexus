@@ -1,0 +1,128 @@
+{
+  "logs": [
+    {
+      "id": "a8a5f672-83c9-44ff-857d-8d5243413401",
+      "level": "info",
+      "source": "digest",
+      "message": "调用 AI 模型 gemini-3-pro-preview-high",
+      "meta": "{\"promptLen\":235205,\"estimatedTokens\":113114}",
+      "createdAt": "2026-03-08T15:21:52.144Z"
+    },
+    {
+      "id": "9026df0a-49e9-4bdd-af95-d2977b79b33f",
+      "level": "info",
+      "source": "digest",
+      "message": "加载 1 个活跃追踪事件",
+      "meta": "{\"events\":[\"全固态电池商业化元年\"]}",
+      "createdAt": "2026-03-08T15:21:52.132Z"
+    },
+    {
+      "id": "b9503b26-93fe-4fb7-b7da-25b89113644a",
+      "level": "info",
+      "source": "digest",
+      "message": "正在调用 AI 生成日报摘要...",
+      "meta": null,
+      "createdAt": "2026-03-08T15:21:52.132Z"
+    },
+    {
+      "id": "73e13127-3a99-4c6d-88b7-c24b3f04decd",
+      "level": "info",
+      "source": "digest",
+      "message": "获取到 282 篇文章",
+      "meta": "{\"dateStr\":\"2026-03-08\",\"range\":\"2026-03-07T15:19:55.998Z → 2026-03-08T15:19:55.998Z\",\"count\":282}",
+      "createdAt": "2026-03-08T15:21:52.126Z"
+    },
+    {
+      "id": "a2cfcbf1-963f-48ab-a100-50728e739c30",
+      "level": "info",
+      "source": "orchestrator",
+      "message": "日期：2026-03-08",
+      "meta": null,
+      "createdAt": "2026-03-08T15:19:55.985Z"
+    },
+    {
+      "id": "0ad36b3f-38eb-4ec9-8443-dc5958f43abb",
+      "level": "info",
+      "source": "digest",
+      "message": "开始生成 2026-03-08 日报",
+      "meta": null,
+      "createdAt": "2026-03-08T15:19:55.985Z"
+    },
+    {
+      "id": "9b06ac70-ebfe-4400-a92f-5ee14038e5d5",
+      "level": "info",
+      "source": "orchestrator",
+      "message": "开始执行每日编排任务",
+      "meta": null,
+      "createdAt": "2026-03-08T15:19:55.984Z"
+    },
+    {
+      "id": "0bc93224-f9c0-436a-93d0-3312c59d13b6",
+      "level": "info",
+      "source": "cron",
+      "message": "定时任务触发",
+      "meta": null,
+      "createdAt": "2026-03-08T15:17:11.132Z"
+    },
+    {
+      "id": "7e690309-352f-40f6-94b8-fa012439af33",
+      "level": "warn",
+      "source": "cron",
+      "message": "定时任务鉴权失败",
+      "meta": null,
+      "createdAt": "2026-03-08T15:17:11.132Z"
+    },
+    {
+      "id": "6775c656-3c72-4dc1-97cd-cc0752bc6550",
+      "level": "info",
+      "source": "cron",
+      "message": "定时任务触发",
+      "meta": null,
+      "createdAt": "2026-03-08T15:14:43.937Z"
+    },
+    {
+      "id": "23dd5727-e3a3-4c92-9a84-ad1e8855ee72",
+      "level": "warn",
+      "source": "cron",
+      "message": "定时任务鉴权失败",
+      "meta": null,
+      "createdAt": "2026-03-08T15:14:43.937Z"
+    },
+    {
+      "id": "1425021d-1d87-422c-99fc-cc5e4df7f8ba",
+      "level": "info",
+      "source": "settings",
+      "message": "系统配置已保存",
+      "meta": "{\"promptCfgUpdated\":true,\"scheduleEnabled\":false,\"scheduleTime\":\"07:00\"}",
+      "createdAt": "2026-03-08T15:13:42.94Z"
+    },
+    {
+      "id": "31de30ff-0e8f-4f41-9b7c-3b0a3f6521a7",
+      "level": "info",
+      "source": "orchestrator",
+      "message": "开始执行每日编排任务",
+      "meta": null,
+      "createdAt": "2026-03-08T15:10:56.337Z"
+    },
+    {
+      "id": "c09c51a6-af59-4c62-8285-e0f86f55ad45",
+      "level": "info",
+      "source": "orchestrator",
+      "message": "日期：2026-03-08",
+      "meta": null,
+      "createdAt": "2026-03-08T15:10:56.337Z"
+    },
+    {
+      "id": "294f17aa-21c9-4ac5-9e04-b7ed6bab902c",
+      "level": "info",
+      "source": "digest",
+      "message": "开始生成 2026-03-08 日报",
+      "meta": null,
+      "createdAt": "2026-03-08T15:10:56.337Z"
+    }
+  ],
+  "total": 15,
+  "page": 1,
+  "pageSize": 30,
+  "totalPages": 1
+}

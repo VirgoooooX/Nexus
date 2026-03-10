@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/db';
 import { aiSearchService } from '../ai/AISearchService';
 import { getCleanedArticles } from '@/lib/readflowClient';
+import { syslog } from '@/lib/SystemLogger';
 
 export class DailyDigestEngine {
     async runDailyDigest(dateStr: string) {
-        console.log(`[DailyDigestEngine] Running summary for ${dateStr}`);
+        syslog.info('digest', `开始生成 ${dateStr} 日报`);
 
         // 1. Check if already exists
         const existing = await prisma.dailyDigest.findUnique({
@@ -12,7 +13,7 @@ export class DailyDigestEngine {
         });
 
         if (existing) {
-            console.log(`[DailyDigestEngine] Digest for ${dateStr} already exists. Skipping.`);
+            syslog.info('digest', `${dateStr} 日报已存在，跳过生成`, { digestId: existing.id });
             return existing;
         }
 
@@ -20,13 +21,26 @@ export class DailyDigestEngine {
         const endIso = now.toISOString();
         const startIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         const articles = await getCleanedArticles(startIso, endIso);
-        console.log(`[DailyDigestEngine] cleanedArticles date=${dateStr} range=${startIso} to ${endIso} count=${Array.isArray(articles) ? articles.length : 0}`);
+        const articleCount = Array.isArray(articles) ? articles.length : 0;
+        syslog.info('digest', `获取到 ${articleCount} 篇文章`, { dateStr, range: `${startIso} → ${endIso}`, count: articleCount });
+
         const activeTrackers = await prisma.trackedEvent.findMany({
             where: { status: 'ACTIVE' },
             select: { id: true, name: true, searchQuery: true }
         });
         const trackerInput = activeTrackers.map((t) => ({ eventId: t.id, eventName: t.name, query: t.searchQuery }));
+
+        if (activeTrackers.length > 0) {
+            syslog.info('digest', `加载 ${activeTrackers.length} 个活跃追踪事件`, { events: activeTrackers.map(t => t.name) });
+        }
+
+        syslog.info('digest', `正在调用 AI 生成日报摘要...`);
         const result = await aiSearchService.summarizeDailyNewsFromArticles(dateStr, articles, trackerInput);
+        syslog.info('digest', `AI 摘要生成完成`, {
+            categories: result.categories?.length || 0,
+            trackedUpdates: result.trackedUpdates?.length || 0,
+            recommendedEvents: result.recommendedEvents?.length || 0,
+        });
 
         // 3. Format into Markdown (handling the new theme-based categorization)
         let markdown = `# ${dateStr} 全球新闻日报\n\n`;
@@ -120,7 +134,7 @@ export class DailyDigestEngine {
             }
         });
 
-        console.log(`[DailyDigestEngine] Digest saved successfully. id=${digest.id} date=${digest.date}`);
+        syslog.info('digest', `日报已保存`, { digestId: digest.id, date: digest.date, markdownLen: markdown.length });
         return digest;
     }
 }

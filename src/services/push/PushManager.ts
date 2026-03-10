@@ -1,10 +1,11 @@
 import { prisma } from '@/lib/db';
 import { wechatService } from './WeChatService';
 import { reportRenderer } from './ReportRenderer';
+import { syslog } from '@/lib/SystemLogger';
 
 export class PushManager {
     async pushDailyReport(orchestratorResult: any) {
-        console.log(`[PushManager] Preparing to push daily report for ${orchestratorResult.date}...`);
+        syslog.info('push', `准备推送 ${orchestratorResult.date} 日报`);
 
         try {
             // 在生产环境中如果无需图片可以统一降级为 Markdown 推送
@@ -16,10 +17,7 @@ export class PushManager {
 
             // 如果未配置微信，打印并跳过
             if (!process.env.WECHAT_CORP_ID || !process.env.WECHAT_SECRET) {
-                console.log(`[PushManager] WeChat not configured. Dumping markdown to console instead:`);
-                console.log("------------------");
-                console.log(markdownContent);
-                console.log("------------------");
+                syslog.warn('push', '微信企业号未配置，跳过推送', { markdownLen: markdownContent.length });
                 return;
             }
 
@@ -33,9 +31,9 @@ export class PushManager {
                 }
             });
 
-            console.log(`[PushManager] Push successful.`);
+            syslog.info('push', `微信推送成功`, { date: orchestratorResult.date });
         } catch (err) {
-            console.error(`[PushManager] Push failed:`, err);
+            syslog.error('push', `微信推送失败: ${String(err)}`, { error: String(err) });
 
             await prisma.pushLog.create({
                 data: {

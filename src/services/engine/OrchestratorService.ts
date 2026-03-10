@@ -1,6 +1,7 @@
 import { dailyDigestEngine } from './DailyDigestEngine';
 import { prisma } from '@/lib/db';
 import { formatDateInTimeZone } from '@/lib/utils';
+import { syslog } from '@/lib/SystemLogger';
 
 function normalizeUrl(raw: string): string {
     try {
@@ -218,35 +219,35 @@ async function attachRelatedTrackersToDigest(dateStr: string) {
 
 export class OrchestratorService {
     async runDaily() {
-        console.log(`[Orchestrator] Starting daily run...`);
+        syslog.info('orchestrator', '开始执行每日编排任务');
         const dateStr = formatDateInTimeZone('Asia/Shanghai');
-        console.log(`[Orchestrator] date=${dateStr}`);
+        syslog.info('orchestrator', `日期：${dateStr}`);
 
         // 1. Daily Digest
         let digestResult = null;
         try {
             digestResult = await dailyDigestEngine.runDailyDigest(dateStr);
-            console.log(`[Orchestrator] digest ok=${Boolean(digestResult)} digestId=${(digestResult as any)?.id || ''}`);
+            syslog.info('orchestrator', `日报生成完成`, { digestId: (digestResult as any)?.id || '' });
         } catch (err) {
-            console.error(`[Orchestrator] Failed to run daily digest:`, err);
+            syslog.error('orchestrator', `日报生成失败: ${String(err)}`, { error: String(err) });
         }
 
         let trackingResults = null;
         try {
             trackingResults = digestResult ? await writeTrackedUpdatesAsEventNodes(dateStr, (digestResult as any).rawJson) : null;
-            if (trackingResults) console.log(`[Orchestrator] trackedNodes created=${(trackingResults as any).created || 0} skipped=${(trackingResults as any).skipped || 0}`);
+            if (trackingResults) syslog.info('orchestrator', `追踪事件节点写入完成`, { created: (trackingResults as any).created || 0, skipped: (trackingResults as any).skipped || 0 });
         } catch (err) {
-            console.error(`[Orchestrator] Failed to write tracked updates as nodes:`, err);
+            syslog.error('orchestrator', `追踪事件节点写入失败: ${String(err)}`, { error: String(err) });
         }
 
         try {
             await attachRelatedTrackersToDigest(dateStr);
-            console.log(`[Orchestrator] attachRelatedTrackers done date=${dateStr}`);
+            syslog.info('orchestrator', `相关追踪器已关联至日报`, { date: dateStr });
         } catch (err) {
-            console.error(`[Orchestrator] Failed to attach related trackers:`, err);
+            syslog.error('orchestrator', `追踪器关联失败: ${String(err)}`, { error: String(err) });
         }
 
-        console.log(`[Orchestrator] Daily run complete.`);
+        syslog.info('orchestrator', '每日编排任务完成');
 
         return {
             date: dateStr,
